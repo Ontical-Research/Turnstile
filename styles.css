@@ -42,3 +42,17 @@ body {
   line-height: 1.5;
   cursor: pointer;
 }
+
+/* Lean 4 semantic token highlighting */
+.cm-lean-keyword    { color: #c678dd; }
+.cm-lean-type       { color: #e5c07b; }
+.cm-lean-function   { color: #61afef; }
+.cm-lean-variable   { color: #abb2bf; }
+.cm-lean-namespace  { color: #56b6c2; }
+.cm-lean-enum-member { color: #d19a66; }
+.cm-lean-macro      { color: #c678dd; font-style: italic; }
+.cm-lean-comment    { color: #5c6370; font-style: italic; }
+.cm-lean-string     { color: #98c379; }
+.cm-lean-number     { color: #d19a66; }
+.cm-lean-operator   { color: #56b6c2; }
+.cm-lean-decorator  { color: #e06c75; }

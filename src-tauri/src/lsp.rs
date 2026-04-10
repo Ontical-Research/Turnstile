@@ -569,4 +569,22 @@ mod tests {
         let params = initialize_params("file:///tmp");
         assert_eq!(params["capabilities"]["experimental"]["plainGoal"], true);
     }
+
+    #[test]
+    fn decode_semantic_tokens_col_resets_on_new_line() {
+        let legend = vec!["keyword".to_string()];
+        // First token: line 1, col 10. Second token: delta_line=1 → line 2, delta_start=3 → col 3 (not 10+3).
+        let data = vec![0, 10, 1, 0, 0, 1, 3, 1, 0, 0];
+        let tokens = decode_semantic_tokens(&data, &legend);
+        assert_eq!(tokens[1].line, 2);
+        assert_eq!(tokens[1].col, 3);
+    }
+
+    #[test]
+    fn decode_semantic_tokens_unknown_type_falls_back_to_variable() {
+        let legend = vec!["keyword".to_string()];
+        let data = vec![0, 0, 5, 99, 0]; // index 99 out of bounds
+        let tokens = decode_semantic_tokens(&data, &legend);
+        assert_eq!(tokens[0].token_type, "variable");
+    }
 }
