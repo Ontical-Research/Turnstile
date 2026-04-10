@@ -16,7 +16,7 @@ mod setup;
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
@@ -237,7 +237,7 @@ async fn get_goal_state(app: AppHandle, line: u32, col: u32) -> Result<String, S
 
 fn handle_lsp_message(
     app: &AppHandle,
-    token_types: &Arc<std::sync::Mutex<Vec<String>>>,
+    token_types: &Arc<Mutex<Vec<String>>>,
     msg: &serde_json::Value,
 ) {
     if let Some(result) = msg.get("result") {
@@ -270,7 +270,7 @@ fn handle_lsp_message(
 
 fn handle_initialize_response(
     app: &AppHandle,
-    token_types: &Arc<std::sync::Mutex<Vec<String>>>,
+    token_types: &Arc<Mutex<Vec<String>>>,
     result: &serde_json::Value,
 ) {
     let legend = lsp::parse_token_legend(result);
@@ -292,7 +292,7 @@ fn handle_initialize_response(
 
 fn handle_semantic_tokens_response(
     app: &AppHandle,
-    token_types: &Arc<std::sync::Mutex<Vec<String>>>,
+    token_types: &Arc<Mutex<Vec<String>>>,
     data: &serde_json::Value,
 ) {
     let Some(arr) = data.as_array() else { return };

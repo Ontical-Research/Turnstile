@@ -7,10 +7,11 @@
 
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -50,14 +51,14 @@ pub struct LspClient {
     next_id: AtomicI64,
     writer: Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>,
     /// Semantic token legend, populated during initialize (accessed from sync reader thread)
-    pub token_types: Arc<std::sync::Mutex<Vec<String>>>,
+    pub token_types: Arc<Mutex<Vec<String>>>,
     /// Pending request registry: `request_id` → oneshot sender for the response.
-    pub pending: Arc<std::sync::Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
+    pub pending: Arc<Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
 }
 
 impl LspClient {
     /// Spawn an LSP server process and return a client handle.
-    pub fn spawn(command: &str, args: &[&str], cwd: &std::path::Path) -> Result<Self, String> {
+    pub fn spawn(command: &str, args: &[&str], cwd: &Path) -> Result<Self, String> {
         info!(
             "Spawning LSP server: {command} {args:?} (cwd: {})",
             cwd.display()
@@ -81,8 +82,8 @@ impl LspClient {
             process: child,
             next_id: AtomicI64::new(1),
             writer: Arc::new(tokio::sync::Mutex::new(Box::new(stdin))),
-            token_types: Arc::new(std::sync::Mutex::new(Vec::new())),
-            pending: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            token_types: Arc::new(Mutex::new(Vec::new())),
+            pending: Arc::new(Mutex::new(HashMap::new())),
         })
     }
 
@@ -142,7 +143,7 @@ impl LspClient {
     /// Routes responses to any registered pending senders; passes the rest to `on_message`.
     pub fn read_messages<F>(
         stdout: std::process::ChildStdout,
-        pending: &Arc<std::sync::Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
+        pending: &Arc<Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
         mut on_message: F,
     ) where
         F: FnMut(&Value),
@@ -286,7 +287,7 @@ pub fn initialize_params(root_uri: &str) -> Value {
 }
 
 /// Convert a filesystem path to a `file://` URI with full RFC 8089 percent-encoding.
-pub fn path_to_file_uri(path: &std::path::Path) -> String {
+pub fn path_to_file_uri(path: &Path) -> String {
     url::Url::from_file_path(path)
         .map_or_else(|()| format!("file://{}", path.display()), |u| u.to_string())
 }
@@ -392,7 +393,7 @@ mod tests {
 
     #[test]
     fn path_to_file_uri_simple() {
-        let path = std::path::Path::new("/home/user/project");
+        let path = Path::new("/home/user/project");
         let uri = path_to_file_uri(path);
         assert!(uri.starts_with("file://"));
         assert!(uri.contains("home/user/project"));
@@ -400,7 +401,7 @@ mod tests {
 
     #[test]
     fn path_to_file_uri_encodes_spaces() {
-        let path = std::path::Path::new("/home/user/my project");
+        let path = Path::new("/home/user/my project");
         let uri = path_to_file_uri(path);
         assert!(
             uri.contains("%20"),
@@ -414,7 +415,7 @@ mod tests {
 
     #[test]
     fn parse_token_legend_returns_types() {
-        let result = serde_json::json!({
+        let result = json!({
             "capabilities": {
                 "semanticTokensProvider": {
                     "legend": {
@@ -429,18 +430,18 @@ mod tests {
 
     #[test]
     fn parse_token_legend_missing_capabilities_returns_empty() {
-        assert!(parse_token_legend(&serde_json::json!({})).is_empty());
+        assert!(parse_token_legend(&json!({})).is_empty());
     }
 
     #[test]
     fn parse_diagnostics_empty_returns_empty() {
-        let params = serde_json::json!({ "diagnostics": [] });
+        let params = json!({ "diagnostics": [] });
         assert!(parse_diagnostics(&params).is_empty());
     }
 
     #[test]
     fn parse_diagnostics_parses_single_diagnostic() {
-        let params = serde_json::json!({
+        let params = json!({
             "diagnostics": [{
                 "range": {
                     "start": { "line": 2, "character": 4 },
@@ -461,7 +462,7 @@ mod tests {
 
     #[test]
     fn parse_diagnostics_converts_line_index() {
-        let params = serde_json::json!({
+        let params = json!({
             "diagnostics": [{
                 "range": {
                     "start": { "line": 0, "character": 0 },
