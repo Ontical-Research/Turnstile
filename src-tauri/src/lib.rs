@@ -11,7 +11,7 @@
 //! Cursor move → `get_goal_state` → `$/lean/plainGoal` (awaited) → response
 //! `{ "rendered": "..." }` → frontend goal panel.
 
-mod lsp;
+pub mod lsp;
 mod setup;
 
 use std::path::PathBuf;

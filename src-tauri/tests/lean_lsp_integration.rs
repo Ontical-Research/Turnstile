@@ -19,25 +19,15 @@
 //!   `TURNSTILE_LSP_CMD`      — path to the lean binary
 //!   `TURNSTILE_PROJECT_PATH` — path to the Lean project directory
 
-use std::io::{BufRead, BufReader, Read, Write};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::path::PathBuf;
+use std::sync::mpsc::{self, Receiver};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::{json, Value};
+use turnstile_lib::lsp::{self, LspClient};
 
 const ERROR_SEVERITY: u64 = 1;
-
-static LOGGER: OnceLock<()> = OnceLock::new();
-
-fn init_logger() {
-    LOGGER.get_or_init(|| {
-        let _ = env_logger::try_init();
-    });
-}
 
 // ── Environment ────────────────────────────────────────────────────────
 
@@ -53,127 +43,130 @@ fn lean_project_path() -> Option<PathBuf> {
     path.exists().then_some(path)
 }
 
-fn lean_bin() -> PathBuf {
+fn lean_bin() -> String {
     if let Ok(cmd) = std::env::var("TURNSTILE_LSP_CMD") {
-        return PathBuf::from(cmd);
+        return cmd;
     }
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".elan")
         .join("bin")
         .join(if cfg!(windows) { "lean.exe" } else { "lean" })
+        .to_string_lossy()
+        .into_owned()
 }
 
-fn path_to_uri(path: &Path) -> String {
-    url::Url::from_file_path(path)
-        .map_or_else(|()| format!("file://{}", path.display()), |u| u.to_string())
-}
-
-// ── LSP client ─────────────────────────────────────────────────────────
+// ── Session ────────────────────────────────────────────────────────────
 //
-// A background thread owns the stdout reader and pushes every parsed JSON
-// message onto a channel. The main (test) thread writes to stdin and pulls
-// messages via the receiver, keeping writer and reader fully decoupled.
+// Wraps the real LspClient with a notification channel so tests can
+// collect server-pushed messages (fileProgress, publishDiagnostics, etc.).
 
-struct LspClient {
-    _process: Child,
-    writer: Box<dyn Write + Send>,
+struct Session {
+    client: LspClient,
     rx: Receiver<Value>,
-    next_id: AtomicI64,
-    /// Messages pulled from the channel but not yet matched by a request.
-    buffered: Vec<Value>,
+    project: PathBuf,
+    doc_version: i64,
+    /// Content most recently sent via `set_content`; avoids redundant re-elaboration.
+    current_content: Option<String>,
+    /// Messages from the most recent `set_content` call (returned on cache hit).
+    last_msgs: Vec<Value>,
 }
 
-impl LspClient {
-    fn spawn(cwd: &Path) -> Result<Self, String> {
+impl Session {
+    fn new(project: PathBuf) -> Result<Self, String> {
         let lean = lean_bin();
-        let mut child = Command::new(&lean)
-            .arg("--server")
-            .current_dir(cwd)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn lean --server ({}): {e}", lean.display()))?;
-
-        let stdin = child.stdin.take().ok_or("no stdin")?;
-        let stdout = child.stdout.take().ok_or("no stdout")?;
+        let mut client = LspClient::spawn(&lean, &["--server"], &project)?;
 
         let (tx, rx) = mpsc::sync_channel::<Value>(512);
-        std::thread::spawn(move || reader_loop(stdout, tx));
+        let stdout = client.take_stdout().ok_or("no stdout")?;
+        let pending = client.pending.clone();
+        std::thread::spawn(move || {
+            LspClient::read_messages(stdout, &pending, move |msg| {
+                let _ = tx.send(msg.clone());
+            });
+        });
+
+        // `block_in_place` lets us call async code from a sync context while
+        // inside a multi-thread Tokio runtime (used by `#[tokio::test]`).
+        tokio::task::block_in_place(|| {
+            let rt = tokio::runtime::Handle::current();
+            let root_uri = lsp::path_to_file_uri(&project);
+            rt.block_on(
+                client.send_request_await("initialize", lsp::initialize_params(&root_uri)),
+            )?;
+            rt.block_on(client.send_notification("initialized", json!({})))?;
+
+            let doc_uri = lsp::path_to_file_uri(&project.join("Proof.lean"));
+            rt.block_on(client.send_notification(
+                "textDocument/didOpen",
+                json!({
+                    "textDocument": {
+                        "uri": &doc_uri,
+                        "languageId": "lean4",
+                        "version": 1,
+                        "text": "",
+                    }
+                }),
+            ))
+        })?;
 
         Ok(Self {
-            _process: child,
-            writer: Box::new(stdin),
+            client,
             rx,
-            next_id: AtomicI64::new(1),
-            buffered: Vec::new(),
+            project,
+            doc_version: 2,
+            current_content: Some(String::new()),
+            last_msgs: Vec::new(),
         })
     }
 
-    fn notify(&mut self, method: &str, params: &Value) -> Result<(), String> {
-        self.send_raw(&json!({ "jsonrpc": "2.0", "method": method, "params": params }))
+    fn doc_uri(&self) -> String {
+        lsp::path_to_file_uri(&self.project.join("Proof.lean"))
     }
 
-    fn request(&mut self, method: &str, params: &Value) -> Result<Value, String> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
-        self.send_raw(&json!({
-            "jsonrpc": "2.0", "id": id, "method": method, "params": params
-        }))?;
-        self.wait_for_id(id)
+    fn request(&self, method: &str, params: Value) -> Result<Value, String> {
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current()
+                .block_on(self.client.send_request_await(method, params))
+        })
     }
 
-    fn send_raw(&mut self, msg: &Value) -> Result<(), String> {
-        let body = serde_json::to_string(msg).map_err(|e| e.to_string())?;
-        log::debug!(
-            "LSP → {}",
-            serde_json::to_string_pretty(msg).unwrap_or_default()
-        );
-        let header = format!("Content-Length: {}\r\n\r\n", body.len());
-        self.writer
-            .write_all(header.as_bytes())
-            .map_err(|e| e.to_string())?;
-        self.writer
-            .write_all(body.as_bytes())
-            .map_err(|e| e.to_string())?;
-        self.writer.flush().map_err(|e| e.to_string())?;
-        Ok(())
-    }
-
-    /// Block until the response matching `id` arrives; stash other messages.
-    fn wait_for_id(&mut self, id: i64) -> Result<Value, String> {
-        if let Some(pos) = self
-            .buffered
-            .iter()
-            .position(|m| m.get("id").and_then(Value::as_i64) == Some(id))
-        {
-            let msg = self.buffered.remove(pos);
-            return extract_result(&msg, id);
+    /// Replace the document with `text` and wait for elaboration + diagnostics.
+    /// No-ops if `text` matches the current content, returning the previous messages.
+    fn set_content(&mut self, text: &str) -> Vec<Value> {
+        if self.current_content.as_deref() == Some(text) {
+            return self.last_msgs.clone();
         }
 
-        let deadline = std::time::Instant::now() + Duration::from_secs(30);
-        loop {
-            let remaining = deadline.saturating_duration_since(std::time::Instant::now());
-            if remaining.is_zero() {
-                return Err(format!("Timed out waiting for response to id {id}"));
-            }
-            match self.rx.recv_timeout(remaining) {
-                Ok(msg) if msg.get("id").and_then(Value::as_i64) == Some(id) => {
-                    return extract_result(&msg, id);
-                }
-                Ok(msg) => self.buffered.push(msg),
-                Err(_) => return Err(format!("Timed out waiting for response to id {id}")),
-            }
-        }
+        let version = self.doc_version;
+        self.doc_version += 1;
+        let uri = self.doc_uri();
+
+        tokio::task::block_in_place(|| {
+            tokio::runtime::Handle::current().block_on(self.client.send_notification(
+                "textDocument/didChange",
+                json!({
+                    "textDocument": { "uri": &uri, "version": version },
+                    "contentChanges": [{ "text": text }],
+                }),
+            ))
+        })
+        .expect("didChange failed");
+
+        let msgs = self.wait_for_elaboration(&uri, Duration::from_secs(60));
+        self.current_content = Some(text.to_owned());
+        msgs.clone_into(&mut self.last_msgs);
+        msgs
     }
 
     /// Collect messages until `done(msg)` returns true or `timeout` elapses.
+    #[allow(clippy::needless_pass_by_ref_mut)] // recv_timeout mutates the Receiver via &mut self
     fn collect_until<F>(&mut self, timeout: Duration, mut done: F) -> Vec<Value>
     where
         F: FnMut(&Value) -> bool,
     {
         let deadline = std::time::Instant::now() + timeout;
-        let mut collected: Vec<Value> = std::mem::take(&mut self.buffered);
+        let mut collected = Vec::new();
 
         loop {
             let remaining = deadline.saturating_duration_since(std::time::Instant::now());
@@ -221,172 +214,12 @@ impl LspClient {
     }
 }
 
-fn extract_result(msg: &Value, id: i64) -> Result<Value, String> {
-    if let Some(err) = msg.get("error") {
-        return Err(format!("LSP error for id {id}: {err}"));
-    }
-    Ok(msg.get("result").cloned().unwrap_or(Value::Null))
-}
-
-// ── Background reader ──────────────────────────────────────────────────
-
-#[allow(clippy::needless_pass_by_value)] // SyncSender is consumed by the thread
-fn reader_loop(stdout: std::process::ChildStdout, tx: SyncSender<Value>) {
-    let mut reader = BufReader::new(stdout);
-    loop {
-        let mut content_length: usize = 0;
-        loop {
-            let mut line = String::new();
-            match reader.read_line(&mut line) {
-                Ok(0) | Err(_) => return,
-                Ok(_) => {
-                    let t = line.trim();
-                    if t.is_empty() {
-                        break;
-                    }
-                    if let Some(len) = t.strip_prefix("Content-Length: ") {
-                        content_length = len.parse().unwrap_or(0);
-                    }
-                }
-            }
-        }
-        if content_length == 0 {
-            continue;
-        }
-        let mut body = vec![0u8; content_length];
-        if reader.read_exact(&mut body).is_err() {
-            return;
-        }
-        if let Ok(msg) = serde_json::from_slice::<Value>(&body) {
-            log::debug!(
-                "LSP ← {}",
-                serde_json::to_string_pretty(&msg).unwrap_or_default()
-            );
-            if tx.send(msg).is_err() {
-                return;
-            }
-        }
-    }
-}
-
-// ── Shared session ─────────────────────────────────────────────────────
-
-struct Session {
-    client: LspClient,
-    project: PathBuf,
-    doc_version: i64,
-    /// Content most recently sent via `set_content`; avoids redundant re-elaboration.
-    current_content: Option<String>,
-    /// Messages from the most recent `set_content` call (returned on cache hit).
-    last_msgs: Vec<Value>,
-}
-
-impl Session {
-    fn new(project: PathBuf) -> Result<Self, String> {
-        let mut client = LspClient::spawn(&project)?;
-
-        let root_uri = path_to_uri(&project);
-        client.request(
-            "initialize",
-            &json!({
-                "processId": std::process::id(),
-                "capabilities": {
-                    "textDocument": {
-                        "synchronization": { "didSave": true },
-                        "publishDiagnostics": { "relatedInformation": true },
-                        "semanticTokens": {
-                            "dynamicRegistration": false,
-                            "requests": { "full": true },
-                            "tokenTypes": [
-                                "namespace","type","class","enum","interface",
-                                "struct","typeParameter","parameter","variable",
-                                "property","enumMember","event","function",
-                                "method","macro","keyword","modifier","comment",
-                                "string","number","regexp","operator","decorator"
-                            ],
-                            "tokenModifiers": [
-                                "declaration","definition","readonly","static",
-                                "deprecated","abstract","async","modification",
-                                "documentation","defaultLibrary"
-                            ],
-                            "formats": ["relative"],
-                            "multilineTokenSupport": false,
-                            "overlappingTokenSupport": false
-                        }
-                    },
-                    "experimental": { "plainGoal": true }
-                },
-                "rootUri": &root_uri,
-                "workspaceFolders": [{ "uri": &root_uri, "name": "test" }],
-            }),
-        )?;
-        client.notify("initialized", &json!({}))?;
-
-        let doc_uri = path_to_uri(&project.join("Proof.lean"));
-        client.notify(
-            "textDocument/didOpen",
-            &json!({
-                "textDocument": {
-                    "uri": &doc_uri,
-                    "languageId": "lean4",
-                    "version": 1,
-                    "text": "",
-                }
-            }),
-        )?;
-
-        Ok(Self {
-            client,
-            project,
-            doc_version: 2,
-            current_content: Some(String::new()),
-            last_msgs: Vec::new(),
-        })
-    }
-
-    /// Replace the document with `text` and wait for elaboration + diagnostics.
-    /// No-ops if `text` matches the current content, returning the previous messages.
-    fn set_content(&mut self, text: &str) -> Vec<Value> {
-        if self.current_content.as_deref() == Some(text) {
-            return self.last_msgs.clone();
-        }
-
-        let version = self.doc_version;
-        self.doc_version += 1;
-        let uri = self.doc_uri();
-
-        self.client
-            .notify(
-                "textDocument/didChange",
-                &json!({
-                    "textDocument": { "uri": &uri, "version": version },
-                    "contentChanges": [{ "text": text }],
-                }),
-            )
-            .expect("didChange failed");
-
-        let msgs = self
-            .client
-            .wait_for_elaboration(&uri, Duration::from_secs(60));
-        self.current_content = Some(text.to_owned());
-        msgs.clone_into(&mut self.last_msgs);
-        msgs
-    }
-
-    fn doc_uri(&self) -> String {
-        path_to_uri(&self.project.join("Proof.lean"))
-    }
-}
-
 // ── Global session ─────────────────────────────────────────────────────
-//
-// `None` means no Lean project was found; tests call `session()` and skip
-// when it returns `None`.
 
 static SESSION: OnceLock<Option<Mutex<Session>>> = OnceLock::new();
 
 fn session() -> Option<std::sync::MutexGuard<'static, Session>> {
-    init_logger();
+    let _ = env_logger::try_init();
     SESSION
         .get_or_init(|| {
             lean_project_path().map(|project| match Session::new(project) {
@@ -395,7 +228,6 @@ fn session() -> Option<std::sync::MutexGuard<'static, Session>> {
             })
         })
         .as_ref()
-        // Recover from a poisoned mutex so one failing test doesn't cascade.
         .map(|mtx| {
             mtx.lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -462,24 +294,23 @@ const UNSOLVED_GOALS: &str =
 //
 // All tests share a single LSP session; run with --test-threads=1.
 
-#[test]
-fn initialize_returns_capabilities() {
+#[tokio::test(flavor = "multi_thread")]
+async fn initialize_returns_capabilities() {
     skip_if_no_project!(sess);
     let exists = sess.project.exists();
     drop(sess);
     assert!(exists, "project path should exist after initialization");
 }
 
-#[test]
-fn server_advertises_semantic_tokens_provider() {
+#[tokio::test(flavor = "multi_thread")]
+async fn server_advertises_semantic_tokens_provider() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     sess.set_content(TACTIC_PROOF);
     let result = sess
-        .client
         .request(
             "textDocument/semanticTokens/full",
-            &json!({ "textDocument": { "uri": &uri } }),
+            json!({ "textDocument": { "uri": &uri } }),
         )
         .expect("semanticTokens/full request failed");
     drop(sess);
@@ -490,8 +321,8 @@ fn server_advertises_semantic_tokens_provider() {
     );
 }
 
-#[test]
-fn valid_proof_produces_no_error_diagnostics() {
+#[tokio::test(flavor = "multi_thread")]
+async fn valid_proof_produces_no_error_diagnostics() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let msgs = sess.set_content(PRIMES_PROOF);
@@ -504,8 +335,8 @@ fn valid_proof_produces_no_error_diagnostics() {
     );
 }
 
-#[test]
-fn type_mismatch_produces_error_diagnostic() {
+#[tokio::test(flavor = "multi_thread")]
+async fn type_mismatch_produces_error_diagnostic() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let msgs = sess.set_content(INVALID_TYPE);
@@ -528,8 +359,8 @@ fn type_mismatch_produces_error_diagnostic() {
     );
 }
 
-#[test]
-fn unknown_identifier_produces_error_diagnostic() {
+#[tokio::test(flavor = "multi_thread")]
+async fn unknown_identifier_produces_error_diagnostic() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let msgs = sess.set_content(UNKNOWN_IDENT);
@@ -541,8 +372,8 @@ fn unknown_identifier_produces_error_diagnostic() {
     );
 }
 
-#[test]
-fn unsolved_goals_produces_error_diagnostic() {
+#[tokio::test(flavor = "multi_thread")]
+async fn unsolved_goals_produces_error_diagnostic() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let msgs = sess.set_content(UNSOLVED_GOALS);
@@ -554,16 +385,15 @@ fn unsolved_goals_produces_error_diagnostic() {
     );
 }
 
-#[test]
-fn semantic_tokens_returned_for_valid_document() {
+#[tokio::test(flavor = "multi_thread")]
+async fn semantic_tokens_returned_for_valid_document() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     sess.set_content(TACTIC_PROOF);
     let result = sess
-        .client
         .request(
             "textDocument/semanticTokens/full",
-            &json!({ "textDocument": { "uri": &uri } }),
+            json!({ "textDocument": { "uri": &uri } }),
         )
         .expect("semanticTokens/full request failed");
     drop(sess);
@@ -585,16 +415,15 @@ fn semantic_tokens_returned_for_valid_document() {
     );
 }
 
-#[test]
-fn semantic_tokens_data_is_valid_five_tuples() {
+#[tokio::test(flavor = "multi_thread")]
+async fn semantic_tokens_data_is_valid_five_tuples() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     sess.set_content(TACTIC_PROOF);
     let result = sess
-        .client
         .request(
             "textDocument/semanticTokens/full",
-            &json!({ "textDocument": { "uri": &uri } }),
+            json!({ "textDocument": { "uri": &uri } }),
         )
         .expect("semanticTokens/full failed");
     drop(sess);
@@ -630,16 +459,15 @@ fn semantic_tokens_data_is_valid_five_tuples() {
     }
 }
 
-#[test]
-fn plain_goal_inside_tactic_block() {
+#[tokio::test(flavor = "multi_thread")]
+async fn plain_goal_inside_tactic_block() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     sess.set_content(TACTIC_PROOF);
     let result = sess
-        .client
         .request(
             "$/lean/plainGoal",
-            &json!({ "textDocument": { "uri": &uri }, "position": { "line": 2, "character": 2 } }),
+            json!({ "textDocument": { "uri": &uri }, "position": { "line": 2, "character": 2 } }),
         )
         .expect("$/lean/plainGoal request failed");
     drop(sess);
@@ -654,18 +482,17 @@ fn plain_goal_inside_tactic_block() {
     // null is acceptable: `ring` closes the goal so the position may be past it.
 }
 
-#[test]
-fn plain_goal_shows_context_mid_proof() {
+#[tokio::test(flavor = "multi_thread")]
+async fn plain_goal_shows_context_mid_proof() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let source = "theorem step_proof (a b : ℕ) : a + b = b + a := by\n  \
                   have h : a + b = b + a := Nat.add_comm a b\n  exact h\n";
     sess.set_content(source);
     let result = sess
-        .client
         .request(
             "$/lean/plainGoal",
-            &json!({ "textDocument": { "uri": &uri }, "position": { "line": 1, "character": 2 } }),
+            json!({ "textDocument": { "uri": &uri }, "position": { "line": 1, "character": 2 } }),
         )
         .expect("$/lean/plainGoal request failed");
     drop(sess);
@@ -686,16 +513,15 @@ fn plain_goal_shows_context_mid_proof() {
     );
 }
 
-#[test]
-fn plain_goal_is_null_outside_tactic_block() {
+#[tokio::test(flavor = "multi_thread")]
+async fn plain_goal_is_null_outside_tactic_block() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     sess.set_content(TACTIC_PROOF);
     let result = sess
-        .client
         .request(
             "$/lean/plainGoal",
-            &json!({ "textDocument": { "uri": &uri }, "position": { "line": 0, "character": 0 } }),
+            json!({ "textDocument": { "uri": &uri }, "position": { "line": 0, "character": 0 } }),
         )
         .expect("$/lean/plainGoal request failed");
     drop(sess);
@@ -707,8 +533,8 @@ fn plain_goal_is_null_outside_tactic_block() {
     );
 }
 
-#[test]
-fn diagnostics_cleared_after_fixing_error() {
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostics_cleared_after_fixing_error() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
 
@@ -727,8 +553,8 @@ fn diagnostics_cleared_after_fixing_error() {
     );
 }
 
-#[test]
-fn diagnostic_positions_are_zero_indexed() {
+#[tokio::test(flavor = "multi_thread")]
+async fn diagnostic_positions_are_zero_indexed() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let msgs = sess.set_content(INVALID_TYPE);
@@ -745,16 +571,16 @@ fn diagnostic_positions_are_zero_indexed() {
     }
 }
 
-#[test]
-fn window_messages_parsed_without_panic() {
+#[tokio::test(flavor = "multi_thread")]
+async fn window_messages_parsed_without_panic() {
     skip_if_no_project!(sess);
     // Drain queued messages; no panic = success.
-    sess.client.collect_until(Duration::from_secs(2), |_| false);
+    sess.collect_until(Duration::from_secs(2), |_| false);
     drop(sess);
 }
 
-#[test]
-fn multiple_errors_in_one_file_all_reported() {
+#[tokio::test(flavor = "multi_thread")]
+async fn multiple_errors_in_one_file_all_reported() {
     skip_if_no_project!(sess);
     let uri = sess.doc_uri();
     let source = "def bad1 : Nat := \"not a nat\"\ndef bad2 : Bool := 42\n";

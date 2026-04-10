@@ -58,6 +58,9 @@ pub struct LspClient {
 
 impl LspClient {
     /// Spawn an LSP server process and return a client handle.
+    ///
+    /// # Errors
+    /// Returns an error if the process cannot be spawned or its stdin cannot be captured.
     pub fn spawn(command: &str, args: &[&str], cwd: &Path) -> Result<Self, String> {
         info!(
             "Spawning LSP server: {command} {args:?} (cwd: {})",
@@ -88,6 +91,9 @@ impl LspClient {
     }
 
     /// Send a JSON-RPC request and return the id used.
+    ///
+    /// # Errors
+    /// Returns an error if serialization or writing to the server fails.
     pub async fn send_request(&self, method: &str, params: Value) -> Result<i64, String> {
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
         let msg = json!({
@@ -102,6 +108,9 @@ impl LspClient {
 
     /// Send a JSON-RPC request and block until the response arrives.
     /// Returns the `result` field of the response, or an error. Timeout: 10 seconds.
+    ///
+    /// # Errors
+    /// Returns an error if the request cannot be sent or the response times out.
     pub async fn send_request_await(&self, method: &str, params: Value) -> Result<Value, String> {
         let (tx, rx) = mpsc::sync_channel::<Value>(1);
         let id = self.next_id.fetch_add(1, Ordering::SeqCst);
@@ -129,6 +138,9 @@ impl LspClient {
     }
 
     /// Send a JSON-RPC notification (no id, no response expected).
+    ///
+    /// # Errors
+    /// Returns an error if serialization or writing to the server fails.
     pub async fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
         let msg = json!({
             "jsonrpc": "2.0",
