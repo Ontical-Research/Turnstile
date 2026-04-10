@@ -1,0 +1,53 @@
+// Types matching the Rust structs serialized by the Tauri backend.
+
+export interface SetupStatusResponse {
+  complete: boolean
+  project_path: string
+}
+
+export interface SetupProgressPayload {
+  phase: string   // "checking" | "installing-elan" | "creating-project" | "fetching-mathlib" | "downloading-cache" | "ready" | "error"
+  message: string
+  progress_pct: number
+}
+
+export interface LspStatusPayload {
+  state: string   // "connected" | "error" | ""
+  message: string
+}
+
+export interface DiagnosticInfo {
+  start_line: number  // 1-indexed (backend converts from 0-indexed LSP)
+  start_col: number
+  end_line: number
+  end_col: number
+  severity: number    // 1=error, 2=warning, 3=info, 4=hint
+  message: string
+}
+
+export interface SemanticToken {
+  line: number    // 1-indexed (matches backend convention)
+  col: number
+  length: number
+  token_type: string
+}
+
+// window.__TAURI__ is injected by Tauri when withGlobalTauri: true
+declare global {
+  interface Window {
+    __TAURI__: {
+      core: { invoke: <T>(cmd: string, args?: unknown) => Promise<T> }
+      event: {
+        listen: <T>(event: string, cb: (e: { payload: T }) => void) => Promise<() => void>
+      }
+    }
+  }
+}
+
+export function invoke<T>(cmd: string, args?: unknown): Promise<T> {
+  return window.__TAURI__.core.invoke<T>(cmd, args)
+}
+
+export function listen<T>(event: string, cb: (payload: T) => void): Promise<() => void> {
+  return window.__TAURI__.event.listen<T>(event, (e) => cb(e.payload))
+}
