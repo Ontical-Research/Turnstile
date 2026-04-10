@@ -190,7 +190,10 @@ impl LspClient {
 
             match serde_json::from_slice::<Value>(&body) {
                 Ok(msg) => {
-                    debug!("LSP ← {}", serde_json::to_string(&msg).unwrap_or_default());
+                    debug!(
+                        "LSP ← {}",
+                        serde_json::to_string_pretty(&msg).unwrap_or_default()
+                    );
 
                     if let Some(id_val) = msg.get("id") {
                         if let Some(id) = id_val.as_i64() {
@@ -222,7 +225,10 @@ impl LspClient {
             serde_json::to_string(msg).map_err(|e| format!("JSON serialization failed: {e}"))?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
-        debug!("LSP → {body}");
+        debug!(
+            "LSP → {}",
+            serde_json::to_string_pretty(msg).unwrap_or_default()
+        );
 
         let mut writer = self.writer.lock().await;
         writer
