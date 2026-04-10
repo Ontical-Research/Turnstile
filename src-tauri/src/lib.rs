@@ -104,11 +104,12 @@ async fn start_lsp(app: AppHandle) -> Result<(), String> {
 
     let token_types = client.token_types.clone();
     let pending = client.pending.clone();
+    let writer = client.writer.clone();
     let app_handle = app.clone();
 
     std::thread::spawn(move || {
         LspClient::read_messages(stdout, &pending, |msg| {
-            handle_lsp_message(&app_handle, &token_types, msg);
+            handle_lsp_message(&app_handle, &token_types, &writer, msg);
         });
 
         app_handle
@@ -238,6 +239,7 @@ async fn get_goal_state(app: AppHandle, line: u32, col: u32) -> Result<String, S
 fn handle_lsp_message(
     app: &AppHandle,
     token_types: &Arc<Mutex<Vec<String>>>,
+    writer: &Arc<tokio::sync::Mutex<Box<dyn std::io::Write + Send>>>,
     msg: &serde_json::Value,
 ) {
     if let Some(result) = msg.get("result") {
@@ -247,6 +249,16 @@ fn handle_lsp_message(
             handle_semantic_tokens_response(app, token_types, data);
         }
         return;
+    }
+
+    // Server→client requests have both "method" and "id"; ack them with null.
+    if let Some(id) = msg.get("id") {
+        if msg.get("method").is_some() {
+            if let Err(e) = lsp::ack_request(writer, id) {
+                log::warn!("Failed to ack LSP request: {e}");
+            }
+            return;
+        }
     }
 
     if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {

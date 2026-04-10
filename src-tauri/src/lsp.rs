@@ -49,7 +49,8 @@ pub struct LspStatus {
 pub struct LspClient {
     process: Child,
     next_id: AtomicI64,
-    writer: Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>,
+    /// Shared writer — clone the `Arc` to send messages from the reader thread via `send_raw`.
+    pub writer: Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>,
     /// Semantic token legend, populated during initialize (accessed from sync reader thread)
     pub token_types: Arc<Mutex<Vec<String>>>,
     /// Pending request registry: `request_id` → oneshot sender for the response.
@@ -254,6 +255,42 @@ impl LspClient {
 
         Ok(())
     }
+}
+
+// ── Utilities ─────────────────────────────────────────────────────────
+
+/// Send a null-result response for a server→client request.
+///
+/// The LSP spec requires clients to respond to every server request. Lean sends
+/// `workspace/semanticTokens/refresh`, `workspace/inlayHint/refresh`, and
+/// `client/registerCapability` as requests; this acks them with `{ "result": null }`.
+///
+/// Intended for use from the sync reader thread — pass a clone of `client.writer`.
+///
+/// # Errors
+/// Returns an error if serialization or writing to the server fails.
+pub fn ack_request(
+    writer: &Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>,
+    id: &Value,
+) -> Result<(), String> {
+    let msg = json!({ "jsonrpc": "2.0", "id": id, "result": Value::Null });
+    let body =
+        serde_json::to_string(&msg).map_err(|e| format!("JSON serialization failed: {e}"))?;
+    let header = format!("Content-Length: {}\r\n\r\n", body.len());
+    debug!(
+        "LSP → {}",
+        serde_json::to_string_pretty(&msg).unwrap_or_default()
+    );
+    let mut guard = writer.blocking_lock();
+    guard
+        .write_all(header.as_bytes())
+        .map_err(|e| format!("Write header failed: {e}"))?;
+    guard
+        .write_all(body.as_bytes())
+        .map_err(|e| format!("Write body failed: {e}"))?;
+    guard.flush().map_err(|e| format!("Flush failed: {e}"))?;
+    drop(guard);
+    Ok(())
 }
 
 // ── Initialize handshake ──────────────────────────────────────────────

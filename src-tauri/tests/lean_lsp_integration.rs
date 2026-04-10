@@ -80,8 +80,14 @@ impl Session {
         let (tx, rx) = mpsc::sync_channel::<Value>(512);
         let stdout = client.take_stdout().ok_or("no stdout")?;
         let pending = client.pending.clone();
+        let writer = client.writer.clone();
         std::thread::spawn(move || {
             LspClient::read_messages(stdout, &pending, move |msg| {
+                // Ack server→client requests (e.g. workspace/semanticTokens/refresh).
+                if msg.get("id").is_some() && msg.get("method").is_some() {
+                    lsp::ack_request(&writer, &msg["id"]).ok();
+                    return;
+                }
                 let _ = tx.send(msg.clone());
             });
         });
