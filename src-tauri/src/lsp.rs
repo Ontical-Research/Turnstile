@@ -1,0 +1,516 @@
+//! LSP client: stdin/stdout JSON-RPC 2.0 transport for the Lean language server.
+//!
+//! Transport: Content-Length framing per the LSP spec.
+//! The stdout reader runs on a dedicated thread (spawned in lib.rs) to avoid
+//! blocking the async runtime. Responses to awaited requests are routed back
+//! via the `pending` map; all other messages are dispatched to the caller's callback.
+
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Write};
+use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::mpsc;
+use std::sync::Arc;
+
+use serde::Serialize;
+use serde_json::{json, Value};
+
+use log::{debug, error, info, warn};
+
+// ── Public types for Tauri events ─────────────────────────────────────
+
+#[derive(Clone, Serialize)]
+pub struct DiagnosticInfo {
+    pub start_line: u32,
+    pub start_col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
+    pub severity: u8, // 1 = error, 2 = warning, 3 = info, 4 = hint
+    pub message: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct SemanticToken {
+    pub line: u32,
+    pub col: u32,
+    pub length: u32,
+    pub token_type: String,
+}
+
+#[derive(Clone, Serialize)]
+pub struct LspStatus {
+    pub state: String, // "connected", "error", ""
+    pub message: String,
+}
+
+// ── LSP Client ────────────────────────────────────────────────────────
+
+pub struct LspClient {
+    process: Child,
+    next_id: AtomicI64,
+    writer: Arc<tokio::sync::Mutex<Box<dyn Write + Send>>>,
+    /// Semantic token legend, populated during initialize (accessed from sync reader thread)
+    pub token_types: Arc<std::sync::Mutex<Vec<String>>>,
+    /// Pending request registry: `request_id` → oneshot sender for the response.
+    pub pending: Arc<std::sync::Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
+}
+
+impl LspClient {
+    /// Spawn an LSP server process and return a client handle.
+    pub fn spawn(command: &str, args: &[&str], cwd: &std::path::Path) -> Result<Self, String> {
+        info!(
+            "Spawning LSP server: {command} {args:?} (cwd: {})",
+            cwd.display()
+        );
+
+        let mut child = Command::new(command)
+            .args(args)
+            .current_dir(cwd)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn LSP server '{command}': {e}"))?;
+
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or("Failed to capture LSP server stdin")?;
+
+        Ok(Self {
+            process: child,
+            next_id: AtomicI64::new(1),
+            writer: Arc::new(tokio::sync::Mutex::new(Box::new(stdin))),
+            token_types: Arc::new(std::sync::Mutex::new(Vec::new())),
+            pending: Arc::new(std::sync::Mutex::new(HashMap::new())),
+        })
+    }
+
+    /// Send a JSON-RPC request and return the id used.
+    pub async fn send_request(&self, method: &str, params: Value) -> Result<i64, String> {
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        self.send_message(&msg).await?;
+        Ok(id)
+    }
+
+    /// Send a JSON-RPC request and block until the response arrives.
+    /// Returns the `result` field of the response, or an error. Timeout: 10 seconds.
+    pub async fn send_request_await(&self, method: &str, params: Value) -> Result<Value, String> {
+        let (tx, rx) = mpsc::sync_channel::<Value>(1);
+        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+
+        {
+            let mut pending = self.pending.lock().map_err(|_| "Pending lock poisoned")?;
+            pending.insert(id, tx);
+        }
+
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": method,
+            "params": params,
+        });
+        self.send_message(&msg).await?;
+
+        let method_owned = method.to_owned();
+        tokio::task::spawn_blocking(move || {
+            rx.recv_timeout(std::time::Duration::from_secs(10))
+                .map_err(|e| format!("Timed out waiting for LSP response to {method_owned}: {e}"))
+        })
+        .await
+        .map_err(|e| format!("spawn_blocking failed: {e}"))?
+    }
+
+    /// Send a JSON-RPC notification (no id, no response expected).
+    pub async fn send_notification(&self, method: &str, params: Value) -> Result<(), String> {
+        let msg = json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+        });
+        self.send_message(&msg).await?;
+        Ok(())
+    }
+
+    /// Read messages from stdout in a blocking loop. Call from a spawned thread.
+    /// Routes responses to any registered pending senders; passes the rest to `on_message`.
+    pub fn read_messages<F>(
+        stdout: std::process::ChildStdout,
+        pending: &Arc<std::sync::Mutex<HashMap<i64, mpsc::SyncSender<Value>>>>,
+        mut on_message: F,
+    ) where
+        F: FnMut(&Value),
+    {
+        let mut reader = BufReader::new(stdout);
+
+        loop {
+            let mut content_length: usize = 0;
+            loop {
+                let mut line = String::new();
+                match reader.read_line(&mut line) {
+                    Ok(0) => {
+                        info!("LSP server stdout closed");
+                        return;
+                    }
+                    Ok(_) => {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty() {
+                            break;
+                        }
+                        if let Some(len_str) = trimmed.strip_prefix("Content-Length: ") {
+                            if let Ok(len) = len_str.parse::<usize>() {
+                                content_length = len;
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        error!("Error reading LSP stdout: {e}");
+                        return;
+                    }
+                }
+            }
+
+            if content_length == 0 {
+                warn!("Got LSP message with no Content-Length, skipping");
+                continue;
+            }
+
+            let mut body = vec![0u8; content_length];
+            if let Err(e) = std::io::Read::read_exact(&mut reader, &mut body) {
+                error!("Error reading LSP message body: {e}");
+                return;
+            }
+
+            match serde_json::from_slice::<Value>(&body) {
+                Ok(msg) => {
+                    debug!("LSP ← {}", serde_json::to_string(&msg).unwrap_or_default());
+
+                    if let Some(id_val) = msg.get("id") {
+                        if let Some(id) = id_val.as_i64() {
+                            let sender = pending.lock().ok().and_then(|mut p| p.remove(&id));
+                            if let Some(tx) = sender {
+                                let result = msg.get("result").cloned().unwrap_or(Value::Null);
+                                let _ = tx.send(result);
+                                continue;
+                            }
+                        }
+                    }
+
+                    on_message(&msg);
+                }
+                Err(e) => {
+                    warn!("Failed to parse LSP message: {e}");
+                }
+            }
+        }
+    }
+
+    /// Take stdout from the child process (can only be called once).
+    pub const fn take_stdout(&mut self) -> Option<std::process::ChildStdout> {
+        self.process.stdout.take()
+    }
+
+    async fn send_message(&self, msg: &Value) -> Result<(), String> {
+        let body =
+            serde_json::to_string(msg).map_err(|e| format!("JSON serialization failed: {e}"))?;
+        let header = format!("Content-Length: {}\r\n\r\n", body.len());
+
+        debug!("LSP → {body}");
+
+        let mut writer = self.writer.lock().await;
+        writer
+            .write_all(header.as_bytes())
+            .map_err(|e| format!("Write header failed: {e}"))?;
+        writer
+            .write_all(body.as_bytes())
+            .map_err(|e| format!("Write body failed: {e}"))?;
+        writer.flush().map_err(|e| format!("Flush failed: {e}"))?;
+        drop(writer);
+
+        Ok(())
+    }
+}
+
+// ── Initialize handshake ──────────────────────────────────────────────
+
+/// Build the `initialize` request params.
+pub fn initialize_params(root_uri: &str) -> Value {
+    json!({
+        "processId": std::process::id(),
+        "capabilities": {
+            "textDocument": {
+                "synchronization": {
+                    "dynamicRegistration": false,
+                    "willSave": false,
+                    "willSaveWaitUntil": false,
+                    "didSave": true
+                },
+                "publishDiagnostics": {
+                    "relatedInformation": true
+                },
+                "semanticTokens": {
+                    "dynamicRegistration": false,
+                    "requests": {
+                        "full": true
+                    },
+                    "tokenTypes": [
+                        "namespace", "type", "class", "enum", "interface",
+                        "struct", "typeParameter", "parameter", "variable",
+                        "property", "enumMember", "event", "function",
+                        "method", "macro", "keyword", "modifier", "comment",
+                        "string", "number", "regexp", "operator", "decorator"
+                    ],
+                    "tokenModifiers": [
+                        "declaration", "definition", "readonly", "static",
+                        "deprecated", "abstract", "async", "modification",
+                        "documentation", "defaultLibrary"
+                    ],
+                    "formats": ["relative"],
+                    "multilineTokenSupport": false,
+                    "overlappingTokenSupport": false
+                }
+            },
+            "experimental": {
+                "plainGoal": true
+            }
+        },
+        "rootUri": root_uri,
+        "workspaceFolders": [{ "uri": root_uri, "name": "turnstile" }],
+    })
+}
+
+/// Convert a filesystem path to a `file://` URI with full RFC 8089 percent-encoding.
+pub fn path_to_file_uri(path: &std::path::Path) -> String {
+    url::Url::from_file_path(path)
+        .map_or_else(|()| format!("file://{}", path.display()), |u| u.to_string())
+}
+
+/// Parse the semantic token legend from an initialize response.
+pub fn parse_token_legend(result: &Value) -> Vec<String> {
+    result
+        .get("capabilities")
+        .and_then(|c| c.get("semanticTokensProvider"))
+        .and_then(|p| p.get("legend"))
+        .and_then(|l| l.get("tokenTypes"))
+        .and_then(|t| t.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Parse a `textDocument/publishDiagnostics` notification params.
+pub fn parse_diagnostics(params: &Value) -> Vec<DiagnosticInfo> {
+    let Some(diags) = params.get("diagnostics").and_then(|d| d.as_array()) else {
+        return Vec::new();
+    };
+
+    diags
+        .iter()
+        .filter_map(|d| {
+            let (sl, sc, el, ec) = parse_lsp_range(d.get("range")?)?;
+            let severity =
+                u8::try_from(d.get("severity").and_then(Value::as_u64).unwrap_or(1)).unwrap_or(1);
+            let message = d
+                .get("message")
+                .and_then(|m| m.as_str())
+                .unwrap_or("")
+                .to_string();
+            Some(DiagnosticInfo {
+                start_line: sl + 1, // LSP is 0-indexed; frontend is 1-indexed
+                start_col: sc,
+                end_line: el + 1,
+                end_col: ec,
+                severity,
+                message,
+            })
+        })
+        .collect()
+}
+
+/// Decode delta-encoded semantic tokens into absolute positions.
+///
+/// The LSP response is a flat array of 5-tuples:
+///   [deltaLine, deltaStart, length, tokenTypeIndex, tokenModifiers]
+pub fn decode_semantic_tokens(data: &[u32], legend: &[String]) -> Vec<SemanticToken> {
+    let mut tokens = Vec::new();
+    let mut line: u32 = 1; // 1-indexed for frontend
+    let mut col: u32 = 0;
+
+    for chunk in data.chunks_exact(5) {
+        let delta_line = chunk[0];
+        let delta_start = chunk[1];
+        let length = chunk[2];
+        let token_type_idx = chunk[3] as usize;
+
+        if delta_line > 0 {
+            line += delta_line;
+            col = delta_start;
+        } else {
+            col += delta_start;
+        }
+
+        let token_type = legend
+            .get(token_type_idx)
+            .cloned()
+            .unwrap_or_else(|| "variable".to_string());
+
+        tokens.push(SemanticToken {
+            line,
+            col,
+            length,
+            token_type,
+        });
+    }
+
+    tokens
+}
+
+/// Parse `{ "start": { "line": u32, "character": u32 }, "end": { ... } }`.
+fn parse_lsp_range(range: &Value) -> Option<(u32, u32, u32, u32)> {
+    let start = range.get("start")?;
+    let end = range.get("end")?;
+    Some((
+        u32::try_from(start.get("line")?.as_u64()?).ok()?,
+        u32::try_from(start.get("character")?.as_u64()?).ok()?,
+        u32::try_from(end.get("line")?.as_u64()?).ok()?,
+        u32::try_from(end.get("character")?.as_u64()?).ok()?,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_to_file_uri_simple() {
+        let path = std::path::Path::new("/home/user/project");
+        let uri = path_to_file_uri(path);
+        assert!(uri.starts_with("file://"));
+        assert!(uri.contains("home/user/project"));
+    }
+
+    #[test]
+    fn path_to_file_uri_encodes_spaces() {
+        let path = std::path::Path::new("/home/user/my project");
+        let uri = path_to_file_uri(path);
+        assert!(
+            uri.contains("%20"),
+            "space should be percent-encoded, got: {uri}"
+        );
+        assert!(
+            !uri.contains(' '),
+            "raw space should not appear in URI, got: {uri}"
+        );
+    }
+
+    #[test]
+    fn parse_token_legend_returns_types() {
+        let result = serde_json::json!({
+            "capabilities": {
+                "semanticTokensProvider": {
+                    "legend": {
+                        "tokenTypes": ["keyword", "type", "variable"]
+                    }
+                }
+            }
+        });
+        let legend = parse_token_legend(&result);
+        assert_eq!(legend, vec!["keyword", "type", "variable"]);
+    }
+
+    #[test]
+    fn parse_token_legend_missing_capabilities_returns_empty() {
+        assert!(parse_token_legend(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn parse_diagnostics_empty_returns_empty() {
+        let params = serde_json::json!({ "diagnostics": [] });
+        assert!(parse_diagnostics(&params).is_empty());
+    }
+
+    #[test]
+    fn parse_diagnostics_parses_single_diagnostic() {
+        let params = serde_json::json!({
+            "diagnostics": [{
+                "range": {
+                    "start": { "line": 2, "character": 4 },
+                    "end":   { "line": 2, "character": 10 }
+                },
+                "severity": 1,
+                "message": "unknown identifier"
+            }]
+        });
+        let diags = parse_diagnostics(&params);
+        assert_eq!(diags.len(), 1);
+        let d = &diags[0];
+        assert_eq!(d.start_line, 3); // LSP 0-indexed → 1-indexed
+        assert_eq!(d.start_col, 4);
+        assert_eq!(d.severity, 1);
+        assert_eq!(d.message, "unknown identifier");
+    }
+
+    #[test]
+    fn parse_diagnostics_converts_line_index() {
+        let params = serde_json::json!({
+            "diagnostics": [{
+                "range": {
+                    "start": { "line": 0, "character": 0 },
+                    "end":   { "line": 0, "character": 1 }
+                },
+                "severity": 2,
+                "message": "warning"
+            }]
+        });
+        let diags = parse_diagnostics(&params);
+        assert_eq!(diags[0].start_line, 1);
+    }
+
+    #[test]
+    fn decode_semantic_tokens_single_token() {
+        let legend = vec!["keyword".to_string(), "type".to_string()];
+        let data = vec![0, 5, 3, 0, 0];
+        let tokens = decode_semantic_tokens(&data, &legend);
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].line, 1);
+        assert_eq!(tokens[0].col, 5);
+        assert_eq!(tokens[0].length, 3);
+        assert_eq!(tokens[0].token_type, "keyword");
+    }
+
+    #[test]
+    fn decode_semantic_tokens_line_advance() {
+        let legend = vec!["keyword".to_string()];
+        let data = vec![
+            0, 0, 1, 0, 0, // token at line 1, col 0
+            2, 4, 1, 0, 0, // delta line +2, col 4 → line 3, col 4
+        ];
+        let tokens = decode_semantic_tokens(&data, &legend);
+        assert_eq!(tokens[0].line, 1);
+        assert_eq!(tokens[1].line, 3);
+        assert_eq!(tokens[1].col, 4);
+    }
+
+    #[test]
+    fn initialize_params_contains_root_uri() {
+        let uri = "file:///my/project";
+        let params = initialize_params(uri);
+        assert_eq!(params["rootUri"], uri);
+        assert_eq!(params["workspaceFolders"][0]["uri"], uri);
+    }
+
+    #[test]
+    fn initialize_params_declares_plain_goal_capability() {
+        let params = initialize_params("file:///tmp");
+        assert_eq!(params["capabilities"]["experimental"]["plainGoal"], true);
+    }
+}

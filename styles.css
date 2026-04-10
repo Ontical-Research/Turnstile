@@ -20,3 +20,25 @@ body {
   font-size: 14px;
   line-height: 1.5;
 }
+
+/* Lean LSP diagnostic gutter markers */
+.lean-diag-error {
+  color: #e06c75;
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.lean-diag-warning {
+  color: #e5c07b;
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.lean-diag-info {
+  color: #61afef;
+  font-size: 10px;
+  line-height: 1.5;
+  cursor: pointer;
+}
