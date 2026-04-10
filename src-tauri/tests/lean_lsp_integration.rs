@@ -125,7 +125,10 @@ impl LspClient {
 
     fn send_raw(&mut self, msg: &Value) -> Result<(), String> {
         let body = serde_json::to_string(msg).map_err(|e| e.to_string())?;
-        log::debug!("LSP → {body}");
+        log::debug!(
+            "LSP → {}",
+            serde_json::to_string_pretty(msg).unwrap_or_default()
+        );
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
         self.writer
             .write_all(header.as_bytes())
@@ -255,7 +258,10 @@ fn reader_loop(stdout: std::process::ChildStdout, tx: SyncSender<Value>) {
             return;
         }
         if let Ok(msg) = serde_json::from_slice::<Value>(&body) {
-            log::debug!("LSP ← {}", serde_json::to_string(&msg).unwrap_or_default());
+            log::debug!(
+                "LSP ← {}",
+                serde_json::to_string_pretty(&msg).unwrap_or_default()
+            );
             if tx.send(msg).is_err() {
                 return;
             }
