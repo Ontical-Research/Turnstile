@@ -1,0 +1,3 @@
+[test]
+# Integration tests share a single lean --server process; they must run serially.
+test-threads = 1
