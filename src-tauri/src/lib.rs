@@ -333,6 +333,12 @@ pub fn run() {
 
             Ok(())
         })
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // A second instance was launched; focus the existing window instead.
+            if let Some(window) = app.get_webview_window("main") {
+                window.set_focus().ok();
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             get_setup_status,
