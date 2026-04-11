@@ -1,0 +1,270 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same branch/PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ── Lint & Format ──────────────────────────────────────────────────────
+  lint-and-format:
+    name: Lint & Format
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Node setup ──────────────────────────────────────────────────────
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: app/package.json
+          node-version: "22"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: app/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      # ── Rust setup ──────────────────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      # ── Frontend checks ─────────────────────────────────────────────────
+      - name: Prettier check
+        working-directory: app
+        run: npm run format:check
+
+      - name: ESLint
+        working-directory: app
+        run: npm run lint
+
+      # npm run check = svelte-check (tsconfig.app.json) + tsc (tsconfig.node.json)
+      - name: svelte-check and TypeScript check (app + node)
+        working-directory: app
+        run: npm run check
+
+      - name: TypeScript check (e2e)
+        working-directory: app
+        run: npx tsc --noEmit -p tsconfig.e2e.json
+
+      - name: Knip (dead code detection)
+        working-directory: app
+        run: npm run knip
+
+      # ── Rust checks ─────────────────────────────────────────────────────
+      - name: cargo fmt --check
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        run: cargo clippy -- -D warnings
+
+  # ── Unit Tests ────────────────────────────────────────────────────────
+  test-unit:
+    name: Unit Tests
+    runs-on: macos-latest
+    needs: lint-and-format
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: app/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Vitest (frontend unit tests)
+        working-directory: app
+        run: npm test
+
+      - name: cargo test --lib (Rust unit tests)
+        run: cargo test --lib
+
+  # ── Integration Tests ─────────────────────────────────────────────────
+  test-integration:
+    name: Integration Tests (Lean LSP)
+    runs-on: macos-latest
+    needs: lint-and-format
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      # The integration tests use skip_if_no_project! — they skip gracefully
+      # when no Lean project is present (TURNSTILE_PROJECT_PATH unset and the
+      # default app-data path absent). Running without env vars exercises the
+      # skip path and confirms the Rust code compiles and links correctly.
+      - name: cargo test (Lean LSP integration tests)
+        run: cargo test --test lean_lsp_integration
+
+  # ── Build ─────────────────────────────────────────────────────────────
+  build:
+    name: Build (macOS)
+    runs-on: macos-latest
+    needs: lint-and-format
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: app/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin/cargo-tauri
+            src-tauri/target
+          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            rust-${{ runner.os }}-
+
+      - name: Install cargo-tauri
+        run: cargo tauri --version 2>/dev/null || cargo install tauri-cli --locked
+
+      - name: Build frontend
+        working-directory: app
+        run: npm run build
+
+      - name: Build Tauri app
+        run: cargo tauri build
+        env:
+          # Disable app signing/notarization in CI.
+          APPLE_SIGNING_IDENTITY: "-"
+          CI: "true"
+
+      - name: Upload macOS app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: turnstile-macos
+          path: src-tauri/target/release/bundle/macos/*.app
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ── E2E Tests ─────────────────────────────────────────────────────────
+  test-e2e:
+    name: E2E Tests (Playwright)
+    runs-on: macos-latest
+    # Playwright starts `npm run dev` (Vite dev server) as the web server;
+    # no compiled Tauri app required. Run after unit tests pass.
+    needs: [test-unit]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: app/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        id: cache-playwright
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers
+        if: steps.cache-playwright.outputs.cache-hit != 'true'
+        working-directory: app
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Playwright e2e tests
+        working-directory: app
+        run: npm run test:e2e
+        env:
+          CI: "true"
