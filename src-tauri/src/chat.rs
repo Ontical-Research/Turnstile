@@ -400,9 +400,14 @@ impl AnthropicBackend {
             "read_lean_source" => state.current_source.lock().await.clone(),
             "read_tactic_state" => {
                 // Delegate to the LSP if available.
-                let line = tool_input.get("line").and_then(|v| v.as_u64()).map(|v| v as u32);
-                let col =
-                    tool_input.get("column").and_then(|v| v.as_u64()).map(|v| v as u32);
+                let line = tool_input
+                    .get("line")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
+                let col = tool_input
+                    .get("column")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as u32);
                 let lsp_lock = state.lsp_client.lock().await;
                 match lsp_lock.as_ref() {
                     Some(client) => {
@@ -537,10 +542,8 @@ impl AnthropicBackend {
                                 let block_type =
                                     block.get("type").and_then(|t| t.as_str()).unwrap_or("");
                                 if block_type == "tool_use" {
-                                    let idx = v
-                                        .get("index")
-                                        .and_then(|i| i.as_u64())
-                                        .unwrap_or(0) as usize;
+                                    let idx = v.get("index").and_then(|i| i.as_u64()).unwrap_or(0)
+                                        as usize;
                                     let id = block
                                         .get("id")
                                         .and_then(|i| i.as_str())
@@ -573,9 +576,8 @@ impl AnthropicBackend {
                                     }
                                     "input_json_delta" => {
                                         if let Some(idx) = current_tool_idx {
-                                            if let Some(partial) = delta
-                                                .get("partial_json")
-                                                .and_then(|p| p.as_str())
+                                            if let Some(partial) =
+                                                delta.get("partial_json").and_then(|p| p.as_str())
                                             {
                                                 if let Some(block) = tool_blocks.get_mut(&idx) {
                                                     block.2.push_str(partial);
@@ -606,9 +608,8 @@ impl AnthropicBackend {
         let tool_calls: Vec<(String, String, serde_json::Value)> = tool_blocks
             .into_values()
             .map(|(id, name, json_str)| {
-                let input = serde_json::from_str(&json_str).unwrap_or(serde_json::Value::Object(
-                    serde_json::Map::new(),
-                ));
+                let input = serde_json::from_str(&json_str)
+                    .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
                 (id, name, input)
             })
             .collect();
