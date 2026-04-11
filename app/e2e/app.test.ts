@@ -1,0 +1,415 @@
+import {
+  test,
+  expect,
+  LEAN_SIMPLE_THEOREM,
+  LEAN_DEFINITION,
+  LEAN_WITH_ERROR,
+  LEAN_MULTI_STEP_PROOF,
+  type DiagnosticInfoFixture,
+  type SemanticTokenFixture,
+} from './fixtures'
+
+// ---------------------------------------------------------------------------
+// Setup overlay
+// ---------------------------------------------------------------------------
+
+test.describe('SetupOverlay', () => {
+  test('shows the overlay while setup is in progress', async ({ page, mountApp: _ }) => {
+    // Mount WITHOUT calling mountApp — we want to catch the overlay before it hides.
+    await page.addInitScript(() => {
+      let resolveLsp: () => void
+      const lspReady = new Promise<void>((r) => (resolveLsp = r))
+      ;(window as unknown as Record<string, unknown>).__resolveLsp = resolveLsp
+
+      window.__TAURI__ = {
+        core: {
+          invoke(cmd: string) {
+            if (cmd === 'get_setup_status') {
+              return Promise.resolve({ complete: false, project_path: '/mock/project' })
+            }
+            if (cmd === 'start_setup') return lspReady
+            if (cmd === 'start_lsp') return Promise.resolve(null)
+            if (cmd === 'update_document') return Promise.resolve(null)
+            if (cmd === 'get_goal_state') return Promise.resolve(null)
+            return Promise.resolve(null)
+          },
+        },
+        event: {
+          listen(_event: string) {
+            return Promise.resolve(() => {})
+          },
+        },
+      }
+    })
+
+    await page.goto('/')
+
+    // The overlay should be visible before setup resolves.
+    const overlay = page.locator('text=Checking Lean installation...')
+    await overlay.waitFor({ state: 'visible' })
+    await expect(overlay).toBeVisible()
+  })
+
+  test('hides the overlay once setup is complete', async ({ page, mountApp }) => {
+    await mountApp({ setupComplete: true })
+    // The overlay is removed from the DOM when setup is done.
+    await expect(page.locator('text=Checking Lean installation...')).not.toBeVisible()
+    await expect(page.locator('.cm-editor')).toBeVisible()
+  })
+
+  test('hides overlay and shows editor when setup is already complete', async ({
+    page,
+    mountApp,
+  }) => {
+    await mountApp({ setupComplete: true })
+    await expect(page.locator('.cm-editor')).toBeVisible()
+    // Overlay text must not be present.
+    await expect(page.locator('text=Checking Lean installation...')).not.toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Editor layout
+// ---------------------------------------------------------------------------
+
+test.describe('Editor', () => {
+  test('renders the CodeMirror editor', async ({ page, mountApp }) => {
+    await mountApp()
+    await expect(page.locator('.cm-editor')).toBeVisible()
+  })
+
+  test('renders line numbers gutter', async ({ page, mountApp }) => {
+    await mountApp()
+    await expect(page.locator('.cm-lineNumbers')).toBeVisible()
+  })
+
+  test('editor starts with an empty document', async ({ page, mountApp }) => {
+    await mountApp()
+    const content = await page.locator('.cm-content').textContent()
+    expect(content?.trim()).toBe('')
+  })
+
+  test('typing Lean code appears in the editor', async ({ page, mountApp }) => {
+    await mountApp()
+    await page.locator('.cm-content').click()
+    await page.keyboard.type('def foo := 42')
+    await expect(page.locator('.cm-content')).toContainText('def foo := 42')
+  })
+
+  test('renders multi-line Lean theorem', async ({ page, mountApp }) => {
+    await mountApp()
+    const editor = page.locator('.cm-content')
+    await editor.click()
+    // Type line by line to preserve line structure
+    for (const line of LEAN_SIMPLE_THEOREM.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await expect(editor).toContainText('theorem add_comm_simple')
+    await expect(editor).toContainText('ring')
+  })
+
+  test('renders multi-step proof', async ({ page, mountApp }) => {
+    await mountApp()
+    const editor = page.locator('.cm-content')
+    await editor.click()
+    for (const line of LEAN_MULTI_STEP_PROOF.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await expect(editor).toContainText('constructor')
+    await expect(editor).toContainText('exact hp')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Theme toggle
+// ---------------------------------------------------------------------------
+
+test.describe('Theme toggle', () => {
+  test('toggle button is visible', async ({ page, mountApp }) => {
+    await mountApp()
+    await expect(page.locator('button').filter({ hasText: /[☀☾]/ })).toBeVisible()
+  })
+
+  test('starts in Dracula (dark) theme', async ({ page, mountApp }) => {
+    await mountApp()
+    const root = page.locator('[data-theme]')
+    await expect(root).toHaveAttribute('data-theme', 'dracula')
+  })
+
+  test('toggle switches to light theme', async ({ page, mountApp }) => {
+    await mountApp()
+    await page.locator('button').filter({ hasText: /[☀☾]/ }).click()
+    const root = page.locator('[data-theme]')
+    await expect(root).toHaveAttribute('data-theme', 'light')
+  })
+
+  test('toggle switches back to dark theme', async ({ page, mountApp }) => {
+    await mountApp()
+    const btn = page.locator('button').filter({ hasText: /[☀☾]/ })
+    await btn.click() // → light
+    await btn.click() // → dracula
+    const root = page.locator('[data-theme]')
+    await expect(root).toHaveAttribute('data-theme', 'dracula')
+  })
+
+  test('editor background changes with theme', async ({ page, mountApp }) => {
+    await mountApp()
+    const editor = page.locator('.cm-editor')
+
+    // Dark theme background
+    await expect(editor).toHaveCSS('background-color', 'rgb(40, 42, 54)') // #282a36
+
+    // Switch to light
+    await page.locator('button').filter({ hasText: /[☀☾]/ }).click()
+    await expect(editor).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Semantic token highlighting
+// ---------------------------------------------------------------------------
+
+test.describe('Semantic token highlighting', () => {
+  /**
+   * Build a token fixture for the first word on the first line of a snippet.
+   * Tokens are 1-indexed to match the backend convention.
+   */
+  function keywordToken(col: number, length: number): SemanticTokenFixture {
+    return { line: 1, col, length, token_type: 'keyword' }
+  }
+
+  test('applies keyword class to "def" in a definition', async ({ page, mountApp, emitEvent }) => {
+    // "def identity (x : α) : α := x"
+    //  col 0, length 3 → "def"
+    const tokens: SemanticTokenFixture[] = [keywordToken(0, 3)]
+    await mountApp({ semanticTokens: tokens })
+
+    // Type the fixture into the editor so the token positions are valid.
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]) // skip comment line
+
+    // Emit updated tokens after typing
+    await emitEvent('lsp-semantic-tokens', tokens)
+
+    await expect(page.locator('.cm-lean-keyword').first()).toBeVisible()
+  })
+
+  test('applies type class to Nat type annotation', async ({ page, mountApp, emitEvent }) => {
+    // "def badType : Nat := ..."  → "Nat" at col 14, length 3
+    const tokens: SemanticTokenFixture[] = [{ line: 1, col: 14, length: 3, token_type: 'type' }]
+    await mountApp({ semanticTokens: tokens })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-semantic-tokens', tokens)
+
+    await expect(page.locator('.cm-lean-type').first()).toBeVisible()
+  })
+
+  test('multiple token types rendered simultaneously', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    // "theorem add_comm_simple (a b : Nat) : a + b = b + a := by"
+    // "theorem" → keyword at col 0 len 7
+    // "Nat"     → type at col 32 len 3
+    const tokens: SemanticTokenFixture[] = [
+      { line: 1, col: 0, length: 7, token_type: 'keyword' },
+      { line: 1, col: 32, length: 3, token_type: 'type' },
+    ]
+    await mountApp({ semanticTokens: tokens })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_SIMPLE_THEOREM.split('\n')[0])
+    await emitEvent('lsp-semantic-tokens', tokens)
+
+    await expect(page.locator('.cm-lean-keyword').first()).toBeVisible()
+    await expect(page.locator('.cm-lean-type').first()).toBeVisible()
+  })
+
+  test('semantic tokens cleared when new empty token list is emitted', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const tokens: SemanticTokenFixture[] = [{ line: 1, col: 0, length: 3, token_type: 'keyword' }]
+    await mountApp({ semanticTokens: tokens })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type('def foo := 1')
+    await emitEvent('lsp-semantic-tokens', tokens)
+    await expect(page.locator('.cm-lean-keyword').first()).toBeVisible()
+
+    // Clear tokens
+    await emitEvent('lsp-semantic-tokens', [])
+    await expect(page.locator('.cm-lean-keyword')).toHaveCount(0)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Diagnostic gutter markers
+// ---------------------------------------------------------------------------
+
+test.describe('Diagnostic gutter markers', () => {
+  test('error marker shown on line with type error', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 18,
+      end_line: 1,
+      end_col: 38,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await expect(page.locator('.lean-diag-error').first()).toBeVisible()
+  })
+
+  test('warning marker shown for warning severity', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 0,
+      end_line: 1,
+      end_col: 10,
+      severity: 2,
+      message: 'unused variable',
+    }
+    await mountApp({ diagnostics: [diag] })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_DEFINITION)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await expect(page.locator('.lean-diag-warning').first()).toBeVisible()
+  })
+
+  test('info marker shown for info severity', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 2,
+      start_col: 0,
+      end_line: 2,
+      end_col: 5,
+      severity: 3,
+      message: 'try this: ring',
+    }
+    await mountApp({ diagnostics: [diag] })
+
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_SIMPLE_THEOREM.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await emitEvent('lsp-diagnostics', [diag])
+
+    // The gutter initialSpacer is always a hidden .lean-diag-info with empty title;
+    // we want the real marker which has a non-empty title attribute.
+    await expect(page.locator('.lean-diag-info[title="try this: ring"]')).toBeVisible()
+  })
+
+  test('diagnostic gutter marker shows tooltip message on hover', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 0,
+      end_line: 1,
+      end_col: 20,
+      severity: 1,
+      message: 'type mismatch: expected Nat, got String',
+    }
+    await mountApp({ diagnostics: [diag] })
+
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    const marker = page.locator('.lean-diag-error').first()
+    await expect(marker).toHaveAttribute('title', 'type mismatch: expected Nat, got String')
+  })
+
+  test('multiple diagnostics on different lines', async ({ page, mountApp, emitEvent }) => {
+    const diags: DiagnosticInfoFixture[] = [
+      {
+        start_line: 1,
+        start_col: 0,
+        end_line: 1,
+        end_col: 3,
+        severity: 1,
+        message: 'error on line 1',
+      },
+      {
+        start_line: 2,
+        start_col: 0,
+        end_line: 2,
+        end_col: 3,
+        severity: 2,
+        message: 'warning on line 2',
+      },
+    ]
+    await mountApp({ diagnostics: diags })
+
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_MULTI_STEP_PROOF.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await emitEvent('lsp-diagnostics', diags)
+
+    await expect(page.locator('.lean-diag-error')).toHaveCount(1)
+    await expect(page.locator('.lean-diag-warning')).toHaveCount(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Goal panel
+// ---------------------------------------------------------------------------
+
+test.describe('GoalPanel', () => {
+  test('goal panel is hidden when no goal is active', async ({ page, mountApp }) => {
+    await mountApp({ goalText: '' })
+    // The panel only renders when visible=true; assert the "Goal State" label is absent.
+    await expect(page.locator('text=Goal State')).not.toBeVisible()
+  })
+
+  test('goal panel appears after cursor moves to a proof line', async ({ page, mountApp }) => {
+    await mountApp({ goalText: '⊢ a + b = b + a' })
+
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_SIMPLE_THEOREM.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+
+    // Click inside the proof body to trigger a cursor-move event.
+    // The mock always returns goalText, so the panel should appear.
+    await page.locator('.cm-content').click()
+
+    await expect(page.locator('text=Goal State')).toBeVisible()
+    await expect(page.locator('pre')).toContainText('⊢ a + b = b + a')
+  })
+
+  test('goal panel displays multi-line goal text', async ({ page, mountApp }) => {
+    const goal = 'case left\n⊢ p\ncase right\n⊢ q'
+    await mountApp({ goalText: goal })
+
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_MULTI_STEP_PROOF.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await page.locator('.cm-content').click()
+
+    await expect(page.locator('text=Goal State')).toBeVisible()
+    await expect(page.locator('pre')).toContainText('case left')
+    await expect(page.locator('pre')).toContainText('case right')
+  })
+})

@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "test": "cd app && npm test && cd ../src-tauri && cargo test",
+    "test": "cd app && npm test && npm run test:e2e && cd ../src-tauri && cargo test",
+    "test:e2e": "cd app && npm run test:e2e",
     "prepare": "husky"
   },
   "devDependencies": {
