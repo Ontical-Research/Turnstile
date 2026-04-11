@@ -1,7 +1,7 @@
 /**
- * Minimal markdown utilities for rendering LSP-returned text.
+ * Minimal Markdown utilities for rendering LSP-returned text.
  *
- * Lean's LSP returns ``$/lean/plainGoal`` responses as markdown that may contain
+ * Lean's LSP returns ``$/lean/plainGoal`` responses as Markdown that may contain
  * fenced code blocks (e.g. ```lean ... ```).  These utilities parse that text
  * into typed blocks so components can render the content without showing the
  * raw fence delimiters.
@@ -23,7 +23,7 @@ type Block = CodeBlock | TextBlock
 const FENCE_RE = /^```(\w*)\n([\s\S]*?)^```/gm
 
 /**
- * Split a markdown string into alternating text and fenced-code blocks.
+ * Split a Markdown string into alternating text and fenced-code blocks.
  *
  * Fence delimiters are consumed and not included in any block's ``content``.
  * Empty blocks are omitted from the result.
