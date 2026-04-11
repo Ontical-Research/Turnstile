@@ -6,13 +6,6 @@
   import GoalPanel from './components/GoalPanel.svelte'
   import SetupOverlay from './components/SetupOverlay.svelte'
   import { theme, toggleTheme } from './lib/theme'
-  import type { Theme } from './lib/theme'
-
-  interface EditorInstance {
-    setTheme(t: Theme): void
-    applyDiagnostics(d: DiagnosticInfo[]): void
-    applySemanticTokens(t: SemanticToken[]): void
-  }
 
   let goalText = $state('')
   let goalVisible = $state(false)
@@ -20,12 +13,8 @@
   let setupMessage = $state('Checking Lean installation...')
   let setupProgress = $state(0)
   let setupError = $state(false)
-
-  let editorRef: EditorInstance | undefined = $state()
-
-  $effect(() => {
-    if (editorRef) editorRef.setTheme($theme)
-  })
+  let diagnostics = $state<DiagnosticInfo[] | null>(null)
+  let semanticTokens = $state<SemanticToken[] | null>(null)
 
   function handleChange(content: string): void {
     invoke('update_document', { content }).catch(() => {
@@ -48,10 +37,10 @@
     // as in the Rust/WASM version. Tauri events can arrive immediately after
     // start_lsp returns; any listener registered after would miss early events.
     const diagPromise = listen<DiagnosticInfo[]>('lsp-diagnostics', (diags) => {
-      if (editorRef) editorRef.applyDiagnostics(diags)
+      diagnostics = diags
     })
     const tokensPromise = listen<SemanticToken[]>('lsp-semantic-tokens', (tokens) => {
-      if (editorRef) editorRef.applySemanticTokens(tokens)
+      semanticTokens = tokens
     })
 
     void Promise.all([diagPromise, tokensPromise]).then(([unlistenDiag, unlistenTokens]) => {
@@ -111,8 +100,10 @@
   data-theme={$theme}
 >
   <Editor
-    bind:this={editorRef}
     initialTheme={$theme}
+    theme={$theme}
+    {diagnostics}
+    {semanticTokens}
     onchange={handleChange}
     oncursormove={handleCursorMove}
   />

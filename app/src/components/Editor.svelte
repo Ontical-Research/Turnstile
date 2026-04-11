@@ -1,31 +1,41 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
-  import { mountEditor, type EditorHandle } from '../lib/editor'
+  import { mountEditor } from '../lib/editor'
   import type { DiagnosticInfo, SemanticToken } from '../lib/tauri'
   import type { Theme } from '../lib/theme'
 
   interface Props {
     initialTheme: Theme
+    theme: Theme
+    diagnostics?: DiagnosticInfo[] | null
+    semanticTokens?: SemanticToken[] | null
     onchange: (content: string) => void
     oncursormove: (line: number, col: number) => void
   }
 
-  let { initialTheme, onchange, oncursormove }: Props = $props()
+  let {
+    initialTheme,
+    theme,
+    diagnostics = null,
+    semanticTokens = null,
+    onchange,
+    oncursormove,
+  }: Props = $props()
 
   let container: HTMLDivElement
-  let handle: EditorHandle | null = null
+  let handle = $state<ReturnType<typeof mountEditor> | null>(null)
 
-  export function applySemanticTokens(tokens: SemanticToken[]): void {
-    handle?.applySemanticTokens(tokens)
-  }
+  $effect(() => {
+    handle?.setTheme(theme)
+  })
 
-  export function applyDiagnostics(diagnostics: DiagnosticInfo[]): void {
-    handle?.applyDiagnostics(diagnostics)
-  }
+  $effect(() => {
+    if (diagnostics) handle?.applyDiagnostics(diagnostics)
+  })
 
-  export function setTheme(t: Theme): void {
-    handle?.setTheme(t)
-  }
+  $effect(() => {
+    if (semanticTokens) handle?.applySemanticTokens(semanticTokens)
+  })
 
   onMount(() => {
     handle = mountEditor(container, initialTheme, onchange, oncursormove)
