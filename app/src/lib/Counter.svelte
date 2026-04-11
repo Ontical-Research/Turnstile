@@ -1,6 +1,6 @@
 <script lang="ts">
   let count: number = $state(0)
-  const increment = () => {
+  const increment = (): void => {
     count += 1
   }
 </script>

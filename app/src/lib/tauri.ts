@@ -6,27 +6,27 @@ export interface SetupStatusResponse {
 }
 
 export interface SetupProgressPayload {
-  phase: string   // "checking" | "installing-elan" | "creating-project" | "fetching-mathlib" | "downloading-cache" | "ready" | "error"
+  phase: string // "checking" | "installing-elan" | "creating-project" | "fetching-mathlib" | "downloading-cache" | "ready" | "error"
   message: string
   progress_pct: number
 }
 
 export interface LspStatusPayload {
-  state: string   // "connected" | "error" | ""
+  state: string // "connected" | "error" | ""
   message: string
 }
 
 export interface DiagnosticInfo {
-  start_line: number  // 1-indexed (backend converts from 0-indexed LSP)
+  start_line: number // 1-indexed (backend converts from 0-indexed LSP)
   start_col: number
   end_line: number
   end_col: number
-  severity: number    // 1=error, 2=warning, 3=info, 4=hint
+  severity: number // 1=error, 2=warning, 3=info, 4=hint
   message: string
 }
 
 export interface SemanticToken {
-  line: number    // 1-indexed (matches backend convention)
+  line: number // 1-indexed (matches backend convention)
   col: number
   length: number
   token_type: string
@@ -36,18 +36,21 @@ export interface SemanticToken {
 declare global {
   interface Window {
     __TAURI__: {
-      core: { invoke: <T>(cmd: string, args?: unknown) => Promise<T> }
+      core: { invoke: (cmd: string, args?: unknown) => Promise<unknown> }
       event: {
-        listen: <T>(event: string, cb: (e: { payload: T }) => void) => Promise<() => void>
+        listen: (event: string, cb: (e: { payload: unknown }) => void) => Promise<() => void>
       }
     }
   }
 }
 
 export function invoke<T>(cmd: string, args?: unknown): Promise<T> {
-  return window.__TAURI__.core.invoke<T>(cmd, args)
+  return window.__TAURI__.core.invoke(cmd, args) as Promise<T>
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-parameters -- T narrows the untyped Tauri global
 export function listen<T>(event: string, cb: (payload: T) => void): Promise<() => void> {
-  return window.__TAURI__.event.listen<T>(event, (e) => cb(e.payload))
+  return window.__TAURI__.event.listen(event, (e) => {
+    cb(e.payload as T)
+  })
 }

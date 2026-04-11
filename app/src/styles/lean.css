@@ -21,20 +21,46 @@
 }
 
 /* Lean 4 semantic token highlighting (Dracula palette) */
-.cm-lean-keyword    { color: #ff79c6; }
-.cm-lean-type       { color: #8be9fd; }
-.cm-lean-function   { color: #50fa7b; }
-.cm-lean-variable   { color: #f8f8f2; }
-.cm-lean-namespace  { color: #8be9fd; }
-.cm-lean-enum-member { color: #ffb86c; }
-.cm-lean-macro      { color: #ff79c6; font-style: italic; }
-.cm-lean-comment    { color: #6272a4; font-style: italic; }
-.cm-lean-string     { color: #f1fa8c; }
-.cm-lean-number     { color: #bd93f9; }
-.cm-lean-operator   { color: #ff79c6; }
-.cm-lean-decorator  { color: #ff5555; }
+.cm-lean-keyword {
+  color: #ff79c6;
+}
+.cm-lean-type {
+  color: #8be9fd;
+}
+.cm-lean-function {
+  color: #50fa7b;
+}
+.cm-lean-variable {
+  color: #f8f8f2;
+}
+.cm-lean-namespace {
+  color: #8be9fd;
+}
+.cm-lean-enum-member {
+  color: #ffb86c;
+}
+.cm-lean-macro {
+  color: #ff79c6;
+  font-style: italic;
+}
+.cm-lean-comment {
+  color: #6272a4;
+  font-style: italic;
+}
+.cm-lean-string {
+  color: #f1fa8c;
+}
+.cm-lean-number {
+  color: #bd93f9;
+}
+.cm-lean-operator {
+  color: #ff79c6;
+}
+.cm-lean-decorator {
+  color: #ff5555;
+}
 
-/* CodeMirror 6 full-screen editor */
+/* CodeMirror 6 full-screen editor — Dracula (default) */
 .cm-editor {
   height: 100%;
   background-color: #282a36;
@@ -42,4 +68,71 @@
 
 .cm-editor.cm-focused {
   outline: none;
+}
+
+/* Light theme overrides (GitHub Light palette) */
+[data-theme='light'] .lean-diag-error {
+  color: #cf222e;
+}
+[data-theme='light'] .lean-diag-warning {
+  color: #9a6700;
+}
+[data-theme='light'] .lean-diag-info {
+  color: #0550ae;
+}
+
+[data-theme='light'] .cm-lean-keyword {
+  color: #cf222e;
+}
+[data-theme='light'] .cm-lean-type {
+  color: #953800;
+}
+[data-theme='light'] .cm-lean-function {
+  color: #8250df;
+}
+[data-theme='light'] .cm-lean-variable {
+  color: #24292f;
+}
+[data-theme='light'] .cm-lean-namespace {
+  color: #953800;
+}
+[data-theme='light'] .cm-lean-enum-member {
+  color: #0550ae;
+}
+[data-theme='light'] .cm-lean-macro {
+  color: #cf222e;
+  font-style: italic;
+}
+[data-theme='light'] .cm-lean-comment {
+  color: #6e7781;
+  font-style: italic;
+}
+[data-theme='light'] .cm-lean-string {
+  color: #0a3069;
+}
+[data-theme='light'] .cm-lean-number {
+  color: #0550ae;
+}
+[data-theme='light'] .cm-lean-operator {
+  color: #cf222e;
+}
+[data-theme='light'] .cm-lean-decorator {
+  color: #cf222e;
+}
+
+[data-theme='light'] .cm-editor {
+  background-color: #ffffff;
+}
+
+/* Selection highlight — CM6's drawSelection layer does not render in WKWebView,
+   so drawSelection is excluded from the editor setup and native ::selection is
+   used instead. */
+.cm-editor .cm-line ::selection,
+.cm-editor .cm-line::selection {
+  background-color: #6272a4 !important;
+}
+
+[data-theme='light'] .cm-editor .cm-line ::selection,
+[data-theme='light'] .cm-editor .cm-line::selection {
+  background-color: #add8ff !important;
 }

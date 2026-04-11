@@ -5,6 +5,14 @@
   import Editor from './components/Editor.svelte'
   import GoalPanel from './components/GoalPanel.svelte'
   import SetupOverlay from './components/SetupOverlay.svelte'
+  import { theme, toggleTheme } from './lib/theme'
+  import type { Theme } from './lib/theme'
+
+  interface EditorInstance {
+    setTheme(t: Theme): void
+    applyDiagnostics(d: DiagnosticInfo[]): void
+    applySemanticTokens(t: SemanticToken[]): void
+  }
 
   let goalText = $state('')
   let goalVisible = $state(false)
@@ -13,15 +21,21 @@
   let setupProgress = $state(0)
   let setupError = $state(false)
 
-  let editorRef: Editor
+  let editorRef: EditorInstance | undefined = $state()
 
-  function handleChange(content: string) {
-    invoke('update_document', { content }).catch(() => {/* LSP not yet connected */})
+  $effect(() => {
+    if (editorRef) editorRef.setTheme($theme)
+  })
+
+  function handleChange(content: string): void {
+    invoke('update_document', { content }).catch(() => {
+      /* LSP not yet connected */
+    })
   }
 
-  async function handleCursorMove(line: number, col: number) {
+  async function handleCursorMove(line: number, col: number): Promise<void> {
     try {
-      const rendered = await invoke<string>('get_goal_state', { line, col })
+      const rendered = await invoke<string | null>('get_goal_state', { line, col })
       goalText = rendered ?? ''
       goalVisible = !!goalText
     } catch {
@@ -29,46 +43,52 @@
     }
   }
 
-  onMount(async () => {
+  onMount(() => {
     // Register listeners BEFORE calling start_lsp — same ordering constraint
     // as in the Rust/WASM version. Tauri events can arrive immediately after
     // start_lsp returns; any listener registered after would miss early events.
-    const unlistenDiag = await listen<DiagnosticInfo[]>('lsp-diagnostics', (diags) => {
-      editorRef?.applyDiagnostics(diags)
+    const diagPromise = listen<DiagnosticInfo[]>('lsp-diagnostics', (diags) => {
+      if (editorRef) editorRef.applyDiagnostics(diags)
+    })
+    const tokensPromise = listen<SemanticToken[]>('lsp-semantic-tokens', (tokens) => {
+      if (editorRef) editorRef.applySemanticTokens(tokens)
     })
 
-    const unlistenTokens = await listen<SemanticToken[]>('lsp-semantic-tokens', (tokens) => {
-      editorRef?.applySemanticTokens(tokens)
+    void Promise.all([diagPromise, tokensPromise]).then(([unlistenDiag, unlistenTokens]) => {
+      void startLsp()
+      return () => {
+        unlistenDiag()
+        unlistenTokens()
+      }
     })
-
-    await startLsp()
-
-    return () => {
-      unlistenDiag()
-      unlistenTokens()
-    }
   })
 
-  async function startLsp() {
+  async function startLsp(): Promise<void> {
     const status = await invoke<{ complete: boolean; project_path: string }>('get_setup_status')
 
     if (!status.complete) {
       // Register the setup-progress listener BEFORE invoking start_setup to avoid
       // missing the "ready" event if setup completes before the listener is registered.
-      await new Promise<void>(async (resolve) => {
-        const unlisten = await listen<SetupProgressPayload>('setup-progress', (p) => {
+      await new Promise<void>((resolve) => {
+        listen<SetupProgressPayload>('setup-progress', (p) => {
           setupMessage = p.message
           setupProgress = p.progress_pct
           if (p.phase === 'error') {
             setupError = true
-            unlisten()
             resolve()
           } else if (p.phase === 'ready') {
-            unlisten()
             resolve()
           }
         })
-        await invoke('start_setup')
+          .then((unlisten) => {
+            void invoke('start_setup').catch(() => {
+              resolve()
+            })
+            return unlisten
+          })
+          .catch(() => {
+            resolve()
+          })
       })
     }
 
@@ -77,14 +97,38 @@
   }
 </script>
 
-<SetupOverlay visible={setupVisible} message={setupMessage} progress={setupProgress} isError={setupError} />
+<SetupOverlay
+  visible={setupVisible}
+  message={setupMessage}
+  progress={setupProgress}
+  isError={setupError}
+/>
 
-<div class="fixed inset-0 bg-[#282a36]">
+<div
+  class="fixed inset-0"
+  class:bg-[#282a36]={$theme === 'dracula'}
+  class:bg-white={$theme === 'light'}
+  data-theme={$theme}
+>
   <Editor
     bind:this={editorRef}
+    initialTheme={$theme}
     onchange={handleChange}
     oncursormove={handleCursorMove}
   />
 </div>
+
+<button
+  onclick={() => {
+    theme.update(toggleTheme)
+  }}
+  class="fixed top-2 right-2 z-20 px-2 py-1 rounded text-xs font-mono opacity-60 hover:opacity-100 transition-opacity"
+  class:bg-[#44475a]={$theme === 'dracula'}
+  class:text-[#f8f8f2]={$theme === 'dracula'}
+  class:bg-[#eaeef2]={$theme === 'light'}
+  class:text-[#24292f]={$theme === 'light'}
+>
+  {$theme === 'dracula' ? '☀' : '☾'}
+</button>
 
 <GoalPanel goal={goalText} visible={goalVisible} />

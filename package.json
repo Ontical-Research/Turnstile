@@ -1,5 +1,9 @@
 {
   "scripts": {
-    "test": "cd app && npm test && cd ../src-tauri && cargo test"
+    "test": "cd app && npm test && cd ../src-tauri && cargo test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
   }
 }
