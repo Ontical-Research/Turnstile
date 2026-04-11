@@ -683,7 +683,8 @@ mod tests {
     fn initialize_params_declares_completion_capability() {
         let params = initialize_params("file:///tmp");
         assert_eq!(
-            params["capabilities"]["textDocument"]["completion"]["completionItem"]["snippetSupport"],
+            params["capabilities"]["textDocument"]["completion"]["completionItem"]
+                ["snippetSupport"],
             false
         );
     }
