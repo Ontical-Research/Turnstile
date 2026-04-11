@@ -39,11 +39,15 @@
     })
 
     // Scroll to bottom after mount
-    tick().then(scrollToBottom).catch(() => undefined)
+    tick()
+      .then(scrollToBottom)
+      .catch(() => undefined)
 
     // Re-scroll when window is resized
     const onResize = (): void => {
-      tick().then(scrollToBottom).catch(() => undefined)
+      tick()
+        .then(scrollToBottom)
+        .catch(() => undefined)
     }
     window.addEventListener('resize', onResize)
 
@@ -60,7 +64,9 @@
   // Accessing .length / the value establishes the reactive dependency in Svelte 5.
   $effect(() => {
     if (messages.length >= 0 && inputHeight >= 0) {
-      tick().then(scrollToBottom).catch(() => undefined)
+      tick()
+        .then(scrollToBottom)
+        .catch(() => undefined)
     }
   })
 
