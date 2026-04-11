@@ -116,6 +116,59 @@ class DiagnosticMarker extends GutterMarker {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Diagnostic underline decorations — StateField<DecorationSet>
+// ---------------------------------------------------------------------------
+
+const diagnosticUnderlineField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none
+  },
+  update(decorations, tr) {
+    decorations = decorations.map(tr.changes)
+    for (const effect of tr.effects) {
+      if (effect.is(setDiagnosticsEffect)) {
+        const ranges: Range<Decoration>[] = []
+        for (const diag of effect.value) {
+          const cssClass =
+            diag.severity === 1
+              ? 'cm-diag-error'
+              : diag.severity === 2
+                ? 'cm-diag-warning'
+                : 'cm-diag-info'
+
+          // DiagnosticInfo uses 1-indexed lines; CM6 doc.line() is also 1-indexed.
+          const startLineNum = diag.start_line
+          const endLineNum = diag.end_line
+          if (
+            startLineNum < 1 ||
+            startLineNum > tr.state.doc.lines ||
+            endLineNum < 1 ||
+            endLineNum > tr.state.doc.lines
+          )
+            continue
+
+          const startLine = tr.state.doc.line(startLineNum)
+          const endLine = tr.state.doc.line(endLineNum)
+          const from = startLine.from + diag.start_col
+          const to = endLine.from + diag.end_col
+
+          if (from >= 0 && to <= tr.state.doc.length && from < to) {
+            ranges.push(Decoration.mark({ class: cssClass }).range(from, to))
+          }
+        }
+        ranges.sort((a, b) => a.from - b.from)
+        decorations = RangeSet.of(ranges)
+      }
+    }
+    return decorations
+  },
+  provide(field) {
+    return EditorView.decorations.from(field)
+  },
+})
+
+// ---------------------------------------------------------------------------
 // Map from 1-indexed line number to DiagnosticInfo
 const diagnosticsField = StateField.define<Map<number, DiagnosticInfo>>({
   create() {
@@ -301,6 +354,7 @@ export function mountEditor(
         ]),
         semanticTokensField,
         diagnosticsField,
+        diagnosticUnderlineField,
         diagnosticGutter,
         updateListener,
         baseTheme,

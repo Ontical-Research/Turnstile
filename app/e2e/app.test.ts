@@ -493,8 +493,10 @@ test.describe('GoalPanel', () => {
     // The mock always returns goalText, so the panel should appear.
     await page.locator('.cm-content').click()
 
-    await expect(page.locator('text=Goal State')).toBeVisible()
-    await expect(page.locator('pre')).toContainText('⊢ a + b = b + a')
+    const goalPanel = page.locator('text=Goal State').locator('..')
+    await expect(goalPanel).toBeVisible()
+    // Plain text (no fences) is rendered in a <p> block inside the panel.
+    await expect(goalPanel.locator('p, pre')).toContainText('⊢ a + b = b + a')
   })
 
   test('goal panel displays multi-line goal text', async ({ page, mountApp }) => {
@@ -508,8 +510,185 @@ test.describe('GoalPanel', () => {
     }
     await page.locator('.cm-content').click()
 
-    await expect(page.locator('text=Goal State')).toBeVisible()
-    await expect(page.locator('pre')).toContainText('case left')
-    await expect(page.locator('pre')).toContainText('case right')
+    const goalPanel = page.locator('text=Goal State').locator('..')
+    await expect(goalPanel).toBeVisible()
+    await expect(goalPanel).toContainText('case left')
+    await expect(goalPanel).toContainText('case right')
+  })
+
+  test('fence delimiters are not shown when goal contains a fenced code block', async ({
+    page,
+    mountApp,
+  }) => {
+    // The Lean LSP wraps goal text in a fenced code block.
+    await mountApp({ goalText: '```lean\n⊢ a + b = b + a\n```' })
+
+    await page.locator('.cm-content').click()
+    await page.locator('.cm-content').click()
+
+    const goalPanel = page.locator('text=Goal State').locator('..')
+    await expect(goalPanel).toBeVisible()
+    // The fence delimiters must not appear anywhere in the panel.
+    await expect(goalPanel).not.toContainText('```')
+    // The goal content itself must be visible inside a <pre> block.
+    await expect(goalPanel.locator('pre')).toContainText('⊢ a + b = b + a')
+  })
+
+  test('prose outside fences is rendered separately from code content', async ({
+    page,
+    mountApp,
+  }) => {
+    // Lean sometimes emits a case label as prose before the fenced goal.
+    await mountApp({ goalText: 'case intro\n```lean\n⊢ True\n```' })
+
+    await page.locator('.cm-content').click()
+    await page.locator('.cm-content').click()
+
+    const goalPanel = page.locator('text=Goal State').locator('..')
+    await expect(goalPanel).toBeVisible()
+    // Prose block rendered as <p>, code block rendered as <pre>.
+    await expect(goalPanel.locator('p')).toContainText('case intro')
+    await expect(goalPanel.locator('pre')).toContainText('⊢ True')
+    await expect(goalPanel).not.toContainText('```')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Diagnostic underlines
+// ---------------------------------------------------------------------------
+
+test.describe('Diagnostic underlines', () => {
+  test('error underline applied to text span covered by diagnostic range', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    // LEAN_WITH_ERROR = 'def badType : Nat := "this is not a nat"'  (40 chars)
+    // The string literal "this is not a nat" spans cols 21-40 (exclusive end).
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await expect(page.locator('.cm-diag-error').first()).toBeVisible()
+  })
+
+  test('warning underline applied for severity 2', async ({ page, mountApp, emitEvent }) => {
+    // LEAN_DEFINITION line 2 = 'def identity (x : α) : α := x'
+    // 'identity' spans cols 4-12 (exclusive end).
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 4,
+      end_line: 1,
+      end_col: 12,
+      severity: 2,
+      message: 'unused variable',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await expect(page.locator('.cm-diag-warning').first()).toBeVisible()
+  })
+
+  test('info underline applied for severity 3', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 2,
+      start_col: 2,
+      end_line: 2,
+      end_col: 6,
+      severity: 3,
+      message: 'try this: ring',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_SIMPLE_THEOREM.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await expect(page.locator('.cm-diag-info').first()).toBeVisible()
+  })
+
+  test('underlines cleared when diagnostics updated to empty list', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+    await expect(page.locator('.cm-diag-error').first()).toBeVisible()
+
+    await emitEvent('lsp-diagnostics', [])
+    await expect(page.locator('.cm-diag-error')).toHaveCount(0)
+  })
+
+  test('error underline has wavy red text-decoration in Dracula theme', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    const underlined = page.locator('.cm-diag-error').first()
+    await expect(underlined).toBeVisible()
+    const decoration = await underlined.evaluate((el) => getComputedStyle(el).textDecoration)
+    expect(decoration).toContain('wavy')
+    // #ff5555 → rgb(255, 85, 85)
+    expect(decoration).toContain('rgb(255, 85, 85)')
+  })
+
+  test('multiple diagnostics produce multiple underlined spans', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    // LEAN_SIMPLE_THEOREM line 1: 'theorem ...' — 'theorem' at cols 0-7
+    // LEAN_SIMPLE_THEOREM line 2: '  ring' — 'ring' at cols 2-6
+    const diags: DiagnosticInfoFixture[] = [
+      { start_line: 1, start_col: 0, end_line: 1, end_col: 7, severity: 1, message: 'error' },
+      { start_line: 2, start_col: 2, end_line: 2, end_col: 6, severity: 2, message: 'warning' },
+    ]
+    await mountApp({ diagnostics: diags })
+    await page.locator('.cm-content').click()
+    for (const line of LEAN_SIMPLE_THEOREM.split('\n')) {
+      await page.keyboard.type(line)
+      await page.keyboard.press('Enter')
+    }
+    await emitEvent('lsp-diagnostics', diags)
+
+    await expect(page.locator('.cm-diag-error')).toHaveCount(1)
+    await expect(page.locator('.cm-diag-warning')).toHaveCount(1)
   })
 })

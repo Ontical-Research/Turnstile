@@ -60,6 +60,37 @@
   color: #ff5555;
 }
 
+/* Lean LSP diagnostic underlines (Dracula palette) */
+.cm-diag-error {
+  text-decoration: underline wavy #ff5555;
+  text-decoration-skip-ink: none;
+}
+
+.cm-diag-warning {
+  text-decoration: underline wavy #ffb86c;
+  text-decoration-skip-ink: none;
+}
+
+.cm-diag-info {
+  text-decoration: underline wavy #8be9fd;
+  text-decoration-skip-ink: none;
+}
+
+[data-theme='light'] .cm-diag-error {
+  text-decoration: underline wavy #cf222e;
+  text-decoration-skip-ink: none;
+}
+
+[data-theme='light'] .cm-diag-warning {
+  text-decoration: underline wavy #9a6700;
+  text-decoration-skip-ink: none;
+}
+
+[data-theme='light'] .cm-diag-info {
+  text-decoration: underline wavy #0550ae;
+  text-decoration-skip-ink: none;
+}
+
 /* CodeMirror 6 full-screen editor — Dracula (default) */
 .cm-editor {
   height: 100%;
