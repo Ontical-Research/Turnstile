@@ -1,3 +1,4 @@
+import { type Page } from '@playwright/test'
 import {
   test,
   expect,
@@ -5,6 +6,7 @@ import {
   LEAN_DEFINITION,
   LEAN_WITH_ERROR,
   LEAN_MULTI_STEP_PROOF,
+  type AppFixtures,
   type CompletionItemFixture,
   type DiagnosticInfoFixture,
   type SemanticTokenFixture,
@@ -555,6 +557,54 @@ test.describe('GoalPanel', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Diagnostic underlines + hover popup — shared fixtures
+// ---------------------------------------------------------------------------
+
+// LEAN_WITH_ERROR = 'def badType : Nat := "this is not a nat"'  (40 chars)
+// The string literal "this is not a nat" spans cols 21-40 (exclusive end).
+const ERROR_DIAG: DiagnosticInfoFixture = {
+  start_line: 1,
+  start_col: 21,
+  end_line: 1,
+  end_col: 40,
+  severity: 1,
+  message: 'type mismatch',
+}
+
+// LEAN_DEFINITION line 2 = 'def identity (x : α) : α := x'
+// 'identity' spans cols 4-12 (exclusive end).
+const WARNING_DIAG: DiagnosticInfoFixture = {
+  start_line: 1,
+  start_col: 4,
+  end_line: 1,
+  end_col: 12,
+  severity: 2,
+  message: 'unused variable',
+}
+
+interface DiagFixtures { mountApp: AppFixtures['mountApp']; emitEvent: AppFixtures['emitEvent'] }
+
+/** Type LEAN_WITH_ERROR into the editor then emit a single error diagnostic. */
+async function setupErrorDiag(
+  page: Page,
+  { mountApp, emitEvent }: DiagFixtures,
+  diag: DiagnosticInfoFixture = ERROR_DIAG,
+): Promise<void> {
+  await mountApp({ diagnostics: [diag] })
+  await page.locator('.cm-content').click()
+  await page.keyboard.type(LEAN_WITH_ERROR)
+  await emitEvent('lsp-diagnostics', [diag])
+}
+
+/** Type LEAN_DEFINITION (second line) into the editor then emit a single warning diagnostic. */
+async function setupWarningDiag(page: Page, { mountApp, emitEvent }: DiagFixtures): Promise<void> {
+  await mountApp({ diagnostics: [WARNING_DIAG] })
+  await page.locator('.cm-content').click()
+  await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!)
+  await emitEvent('lsp-diagnostics', [WARNING_DIAG])
+}
+
+// ---------------------------------------------------------------------------
 // Diagnostic underlines
 // ---------------------------------------------------------------------------
 
@@ -564,44 +614,17 @@ test.describe('Diagnostic underlines', () => {
     mountApp,
     emitEvent,
   }) => {
-    // LEAN_WITH_ERROR = 'def badType : Nat := "this is not a nat"'  (40 chars)
-    // The string literal "this is not a nat" spans cols 21-40 (exclusive end).
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
-
+    await setupErrorDiag(page, { mountApp, emitEvent })
     await expect(page.locator('.cm-diag-error').first()).toBeVisible()
   })
 
   test('warning underline applied for severity 2', async ({ page, mountApp, emitEvent }) => {
-    // LEAN_DEFINITION line 2 = 'def identity (x : α) : α := x'
-    // 'identity' spans cols 4-12 (exclusive end).
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 4,
-      end_line: 1,
-      end_col: 12,
-      severity: 2,
-      message: 'unused variable',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!)
-    await emitEvent('lsp-diagnostics', [diag])
-
+    await setupWarningDiag(page, { mountApp, emitEvent })
     await expect(page.locator('.cm-diag-warning').first()).toBeVisible()
   })
 
   test('info underline applied for severity 3', async ({ page, mountApp, emitEvent }) => {
+    // LEAN_SIMPLE_THEOREM line 2: '  ring' — 'ring' at cols 2-6
     const diag: DiagnosticInfoFixture = {
       start_line: 2,
       start_col: 2,
@@ -626,18 +649,7 @@ test.describe('Diagnostic underlines', () => {
     mountApp,
     emitEvent,
   }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
+    await setupErrorDiag(page, { mountApp, emitEvent })
     await expect(page.locator('.cm-diag-error').first()).toBeVisible()
 
     await emitEvent('lsp-diagnostics', [])
@@ -649,18 +661,7 @@ test.describe('Diagnostic underlines', () => {
     mountApp,
     emitEvent,
   }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
+    await setupErrorDiag(page, { mountApp, emitEvent })
 
     const underlined = page.locator('.cm-diag-error').first()
     await expect(underlined).toBeVisible()
@@ -704,18 +705,8 @@ test.describe('Diagnostic hover popup', () => {
     mountApp,
     emitEvent,
   }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch: expected Nat, got String',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
+    const diag = { ...ERROR_DIAG, message: 'type mismatch: expected Nat, got String' }
+    await setupErrorDiag(page, { mountApp, emitEvent }, diag)
 
     const underline = page.locator('.cm-diag-error').first()
     await expect(underline).toBeVisible()
@@ -728,37 +719,13 @@ test.describe('Diagnostic hover popup', () => {
   })
 
   test('error popup has the error severity style', async ({ page, mountApp, emitEvent }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
-
+    await setupErrorDiag(page, { mountApp, emitEvent })
     await page.locator('.cm-diag-error').first().hover()
     await expect(page.locator('.lean-diag-popup-error')).toBeVisible()
   })
 
   test('warning popup has the warning severity style', async ({ page, mountApp, emitEvent }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 4,
-      end_line: 1,
-      end_col: 12,
-      severity: 2,
-      message: 'unused variable',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!)
-    await emitEvent('lsp-diagnostics', [diag])
-
+    await setupWarningDiag(page, { mountApp, emitEvent })
     await page.locator('.cm-diag-warning').first().hover()
     await expect(page.locator('.lean-diag-popup-warning')).toBeVisible()
   })
@@ -768,40 +735,17 @@ test.describe('Diagnostic hover popup', () => {
     mountApp,
     emitEvent,
   }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
+    await setupErrorDiag(page, { mountApp, emitEvent })
 
     await page.locator('.cm-diag-error').first().hover()
     await expect(page.locator('.lean-diag-popup')).toBeVisible()
 
-    // Move mouse away to a neutral spot
     await page.mouse.move(0, 0)
     await expect(page.locator('.lean-diag-popup')).not.toBeVisible()
   })
 
   test('gutter dot no longer shows a native tooltip', async ({ page, mountApp, emitEvent }) => {
-    const diag: DiagnosticInfoFixture = {
-      start_line: 1,
-      start_col: 21,
-      end_line: 1,
-      end_col: 40,
-      severity: 1,
-      message: 'type mismatch',
-    }
-    await mountApp({ diagnostics: [diag] })
-    await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_WITH_ERROR)
-    await emitEvent('lsp-diagnostics', [diag])
+    await setupErrorDiag(page, { mountApp, emitEvent })
 
     const dot = page.locator('.lean-diag-error').first()
     await expect(dot).toBeVisible()

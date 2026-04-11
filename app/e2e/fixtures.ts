@@ -142,7 +142,7 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
 // Custom test fixture — wraps base test with ready-app helpers
 // ---------------------------------------------------------------------------
 
-interface AppFixtures {
+export interface AppFixtures {
   /** Navigate to the app with Tauri mocked; resolves once the editor is visible. */
   mountApp(opts?: TauriMockOptions): Promise<void>
   /** Emit a Tauri LSP event from inside the page. */
