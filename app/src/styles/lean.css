@@ -60,6 +60,51 @@
   color: #ff5555;
 }
 
+/* Lean LSP diagnostic hover popup */
+.lean-diag-popup {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 4px 8px;
+  border-radius: 4px;
+  max-width: 480px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #21222c;
+  border: 1px solid #44475a;
+  color: #f8f8f2;
+}
+
+.lean-diag-popup-error {
+  border-left: 3px solid #ff5555;
+}
+
+.lean-diag-popup-warning {
+  border-left: 3px solid #ffb86c;
+}
+
+.lean-diag-popup-info {
+  border-left: 3px solid #8be9fd;
+}
+
+[data-theme='light'] .lean-diag-popup {
+  background: #ffffff;
+  border-color: #d0d7de;
+  color: #24292f;
+}
+
+[data-theme='light'] .lean-diag-popup-error {
+  border-left-color: #cf222e;
+}
+
+[data-theme='light'] .lean-diag-popup-warning {
+  border-left-color: #9a6700;
+}
+
+[data-theme='light'] .lean-diag-popup-info {
+  border-left-color: #0550ae;
+}
+
 /* Lean LSP diagnostic underlines (Dracula palette) */
 .cm-diag-error {
   text-decoration: underline wavy #ff5555;

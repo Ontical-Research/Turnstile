@@ -304,9 +304,8 @@ test.describe('Diagnostic gutter markers', () => {
     }
     await emitEvent('lsp-diagnostics', [diag])
 
-    // The gutter initialSpacer is always a hidden .lean-diag-info with empty title;
-    // we want the real marker which has a non-empty title attribute.
-    await expect(page.locator('.lean-diag-info[title="try this: ring"]')).toBeVisible()
+    // .nth(0) is the hidden initialSpacer; .nth(1) is the real gutter marker.
+    await expect(page.locator('.lean-diag-info').nth(1)).toBeVisible()
   })
 
   test('diagnostic gutter marker shows tooltip message on hover', async ({
@@ -328,8 +327,10 @@ test.describe('Diagnostic gutter markers', () => {
     await page.keyboard.type(LEAN_WITH_ERROR)
     await emitEvent('lsp-diagnostics', [diag])
 
+    // Message is now shown via hover popup, not a native title tooltip.
+    // Verify the dot has no title attribute (popup test covers the message content).
     const marker = page.locator('.lean-diag-error').first()
-    await expect(marker).toHaveAttribute('title', 'type mismatch: expected Nat, got String')
+    await expect(marker).not.toHaveAttribute('title')
   })
 
   test('multiple diagnostics on different lines', async ({ page, mountApp, emitEvent }) => {
@@ -690,5 +691,120 @@ test.describe('Diagnostic underlines', () => {
 
     await expect(page.locator('.cm-diag-error')).toHaveCount(1)
     await expect(page.locator('.cm-diag-warning')).toHaveCount(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Diagnostic hover popup
+// ---------------------------------------------------------------------------
+
+test.describe('Diagnostic hover popup', () => {
+  test('hovering an error underline shows the diagnostic message', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch: expected Nat, got String',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    const underline = page.locator('.cm-diag-error').first()
+    await expect(underline).toBeVisible()
+    await underline.hover()
+
+    await expect(page.locator('.lean-diag-popup')).toBeVisible()
+    await expect(page.locator('.lean-diag-popup')).toContainText(
+      'type mismatch: expected Nat, got String',
+    )
+  })
+
+  test('error popup has the error severity style', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await page.locator('.cm-diag-error').first().hover()
+    await expect(page.locator('.lean-diag-popup-error')).toBeVisible()
+  })
+
+  test('warning popup has the warning severity style', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 4,
+      end_line: 1,
+      end_col: 12,
+      severity: 2,
+      message: 'unused variable',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await page.locator('.cm-diag-warning').first().hover()
+    await expect(page.locator('.lean-diag-popup-warning')).toBeVisible()
+  })
+
+  test('popup disappears when mouse leaves the underline', async ({
+    page,
+    mountApp,
+    emitEvent,
+  }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    await page.locator('.cm-diag-error').first().hover()
+    await expect(page.locator('.lean-diag-popup')).toBeVisible()
+
+    // Move mouse away to a neutral spot
+    await page.mouse.move(0, 0)
+    await expect(page.locator('.lean-diag-popup')).not.toBeVisible()
+  })
+
+  test('gutter dot no longer shows a native tooltip', async ({ page, mountApp, emitEvent }) => {
+    const diag: DiagnosticInfoFixture = {
+      start_line: 1,
+      start_col: 21,
+      end_line: 1,
+      end_col: 40,
+      severity: 1,
+      message: 'type mismatch',
+    }
+    await mountApp({ diagnostics: [diag] })
+    await page.locator('.cm-content').click()
+    await page.keyboard.type(LEAN_WITH_ERROR)
+    await emitEvent('lsp-diagnostics', [diag])
+
+    const dot = page.locator('.lean-diag-error').first()
+    await expect(dot).toBeVisible()
+    await expect(dot).not.toHaveAttribute('title')
   })
 })

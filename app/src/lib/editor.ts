@@ -3,6 +3,7 @@ import {
   StateField,
   StateEffect,
   RangeSet,
+  type Text,
   Compartment,
   type Extension,
   type Range,
@@ -13,6 +14,7 @@ import {
   type DecorationSet,
   gutter,
   GutterMarker,
+  hoverTooltip,
   type ViewUpdate,
   lineNumbers,
   highlightActiveLineGutter,
@@ -100,17 +102,13 @@ const semanticTokensField = StateField.define<DecorationSet>({
 // ---------------------------------------------------------------------------
 
 class DiagnosticMarker extends GutterMarker {
-  constructor(
-    private readonly cssClass: string,
-    private readonly msg: string,
-  ) {
+  constructor(private readonly cssClass: string) {
     super()
   }
 
   override toDOM(): HTMLElement {
     const el = document.createElement('div')
     el.className = this.cssClass
-    el.title = this.msg
     el.textContent = '●'
     return el
   }
@@ -169,6 +167,64 @@ const diagnosticUnderlineField = StateField.define<DecorationSet>({
 })
 
 // ---------------------------------------------------------------------------
+// Full diagnostic list — used by the hover tooltip to find any diag at a pos
+// ---------------------------------------------------------------------------
+
+const diagnosticListField = StateField.define<DiagnosticInfo[]>({
+  create() {
+    return []
+  },
+  update(list, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setDiagnosticsEffect)) return effect.value
+    }
+    return list
+  },
+})
+
+/** Returns the CM6 document offset range [from, to) for a DiagnosticInfo. */
+function diagRange(diag: DiagnosticInfo, doc: Text): { from: number; to: number } | null {
+  if (
+    diag.start_line < 1 ||
+    diag.start_line > doc.lines ||
+    diag.end_line < 1 ||
+    diag.end_line > doc.lines
+  )
+    return null
+  const from = doc.line(diag.start_line).from + diag.start_col
+  const to = doc.line(diag.end_line).from + diag.end_col
+  if (from < 0 || to > doc.length || from >= to) return null
+  return { from, to }
+}
+
+const diagnosticHoverTooltip = hoverTooltip((view, pos) => {
+  const diags = view.state.field(diagnosticListField)
+  const hit = diags.find((d) => {
+    const r = diagRange(d, view.state.doc)
+    return r !== null && pos >= r.from && pos <= r.to
+  })
+  if (!hit) return null
+
+  const severityClass =
+    hit.severity === 1
+      ? 'lean-diag-popup-error'
+      : hit.severity === 2
+        ? 'lean-diag-popup-warning'
+        : 'lean-diag-popup-info'
+
+  return {
+    pos,
+    above: true,
+    create() {
+      const dom = document.createElement('div')
+      dom.className = `lean-diag-popup ${severityClass}`
+      dom.textContent = hit.message
+      return { dom }
+    },
+  }
+})
+
+// ---------------------------------------------------------------------------
 // Map from 1-indexed line number to DiagnosticInfo
 const diagnosticsField = StateField.define<Map<number, DiagnosticInfo>>({
   create() {
@@ -202,9 +258,9 @@ const diagnosticGutter = gutter({
           ? 'lean-diag-warning'
           : 'lean-diag-info'
 
-    return new DiagnosticMarker(cssClass, diag.message)
+    return new DiagnosticMarker(cssClass)
   },
-  initialSpacer: () => new DiagnosticMarker('lean-diag-info', ''),
+  initialSpacer: () => new DiagnosticMarker('lean-diag-info'),
 })
 
 // ---------------------------------------------------------------------------
@@ -354,7 +410,9 @@ export function mountEditor(
         ]),
         semanticTokensField,
         diagnosticsField,
+        diagnosticListField,
         diagnosticUnderlineField,
+        diagnosticHoverTooltip,
         diagnosticGutter,
         updateListener,
         baseTheme,
