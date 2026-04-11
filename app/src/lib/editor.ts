@@ -181,7 +181,10 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
 
   if (items.length === 0) return null
 
-  const word = ctx.matchBefore(/\w*/)
+  // Use the start of the current word as `from` so CM6 filters completions
+  // against the typed prefix. Fall back to the cursor position for explicit
+  // requests (Ctrl+Space) where there may be no word yet.
+  const word = ctx.matchBefore(/\w+/)
   return {
     from: word ? word.from : pos,
     options: items.map((item) => ({

@@ -18,11 +18,10 @@ test.describe('SetupOverlay', () => {
   test('shows the overlay while setup is in progress', async ({ page, mountApp: _ }) => {
     // Mount WITHOUT calling mountApp — we want to catch the overlay before it hides.
     await page.addInitScript(() => {
-      let resolveLsp: () => void
+      let resolveLsp!: () => void
       const lspReady = new Promise<void>((r) => (resolveLsp = r))
-      ;(window as unknown as Record<string, unknown>).__resolveLsp = resolveLsp
-
-      window.__TAURI__ = {
+      ;(window as unknown as Record<string, unknown>)['__resolveLsp'] = resolveLsp
+      ;(window as unknown as Record<string, unknown>)['__TAURI__'] = {
         core: {
           invoke(cmd: string) {
             if (cmd === 'get_setup_status') {
@@ -189,7 +188,7 @@ test.describe('Semantic token highlighting', () => {
 
     // Type the fixture into the editor so the token positions are valid.
     await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]) // skip comment line
+    await page.keyboard.type(LEAN_DEFINITION.split('\n')[1]!) // skip comment line
 
     // Emit updated tokens after typing
     await emitEvent('lsp-semantic-tokens', tokens)
@@ -209,11 +208,7 @@ test.describe('Semantic token highlighting', () => {
     await expect(page.locator('.cm-lean-type').first()).toBeVisible()
   })
 
-  test('multiple token types rendered simultaneously', async ({
-    page,
-    mountApp,
-    emitEvent,
-  }) => {
+  test('multiple token types rendered simultaneously', async ({ page, mountApp, emitEvent }) => {
     // "theorem add_comm_simple (a b : Nat) : a + b = b + a := by"
     // "theorem" → keyword at col 0 len 7
     // "Nat"     → type at col 32 len 3
@@ -224,7 +219,7 @@ test.describe('Semantic token highlighting', () => {
     await mountApp({ semanticTokens: tokens })
 
     await page.locator('.cm-content').click()
-    await page.keyboard.type(LEAN_SIMPLE_THEOREM.split('\n')[0])
+    await page.keyboard.type(LEAN_SIMPLE_THEOREM.split('\n')[0]!)
     await emitEvent('lsp-semantic-tokens', tokens)
 
     await expect(page.locator('.cm-lean-keyword').first()).toBeVisible()
@@ -390,10 +385,7 @@ test.describe('Tab completion', () => {
     await expect(page.locator('.cm-tooltip-autocomplete')).toBeVisible()
   })
 
-  test('completion menu lists items returned by get_completions', async ({
-    page,
-    mountApp,
-  }) => {
+  test('completion menu lists items returned by get_completions', async ({ page, mountApp }) => {
     await mountApp({ completionItems: COMPLETIONS })
     const editor = page.locator('.cm-content')
     await editor.click()
@@ -416,17 +408,18 @@ test.describe('Tab completion', () => {
     await expect(page.locator('.cm-completionDetail').first()).toBeVisible()
   })
 
-  test('clicking a completion item inserts its label', async ({
-    page,
-    mountApp,
-  }) => {
-    const items: CompletionItemFixture[] = [{ label: 'theorem', detail: 'keyword', insert_text: null }]
+  test('clicking a completion item inserts its label', async ({ page, mountApp }) => {
+    const items: CompletionItemFixture[] = [
+      { label: 'theorem', detail: 'keyword', insert_text: null },
+    ]
     await mountApp({ completionItems: items })
     const editor = page.locator('.cm-content')
     await editor.click()
     await page.keyboard.type('th')
     // Wait for the item to appear in the menu
-    const option = page.locator('.cm-tooltip-autocomplete [role=option]').filter({ hasText: 'theorem' })
+    const option = page
+      .locator('.cm-tooltip-autocomplete [role=option]')
+      .filter({ hasText: 'theorem' })
     await expect(option).toBeVisible()
     await option.click()
     await expect(editor).toContainText('theorem')
@@ -442,7 +435,9 @@ test.describe('Tab completion', () => {
     await editor.click()
     await page.keyboard.type('mk')
     // Click the option to accept it
-    const option = page.locator('.cm-tooltip-autocomplete [role=option]').filter({ hasText: 'mkApp' })
+    const option = page
+      .locator('.cm-tooltip-autocomplete [role=option]')
+      .filter({ hasText: 'mkApp' })
     await expect(option).toBeVisible()
     await option.click()
     await expect(editor).toContainText('mkApp f a')

@@ -83,7 +83,7 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
       const listeners = new Map<string, Listener[]>()
 
       // Expose a helper so tests can fire LSP events from outside.
-      ;(window as unknown as Record<string, unknown>).__tauriEmit = (
+      ;(window as unknown as Record<string, unknown>)['__tauriEmit'] = (
         event: string,
         payload: unknown,
       ) => {
@@ -91,8 +91,7 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
           cb({ payload })
         }
       }
-
-      window.__TAURI__ = {
+      ;(window as unknown as Record<string, unknown>)['__TAURI__'] = {
         core: {
           invoke(cmd: string) {
             if (cmd === 'get_setup_status') {
@@ -115,7 +114,7 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
             // calls get_setup_status. We fire synthetic events a tick later to
             // simulate the LSP server sending its first batch of data.
             if (event === 'lsp-semantic-tokens') {
-              Promise.resolve().then(() => {
+              void Promise.resolve().then(() => {
                 for (const cb2 of listeners.get('lsp-diagnostics') ?? []) {
                   cb2({ payload: diagnostics })
                 }
@@ -164,7 +163,10 @@ export const test = base.extend<AppFixtures>({
     await use(async (event: string, payload: unknown) => {
       await page.evaluate(
         ({ event, payload }) => {
-          ;(window as unknown as Record<string, unknown>).__tauriEmit(event, payload)
+          ;(window as unknown as Record<string, (e: string, p: unknown) => void>)['__tauriEmit']!(
+            event,
+            payload,
+          )
         },
         { event, payload },
       )

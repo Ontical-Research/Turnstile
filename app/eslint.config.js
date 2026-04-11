@@ -57,6 +57,20 @@ export default tseslint.config(
     },
   },
 
+  // e2e test overrides — relax rules that produce false positives in Playwright tests
+  {
+    files: ['e2e/**/*.ts'],
+    rules: {
+      // Playwright's expect() methods are always bound correctly; this rule
+      // produces hundreds of false positives on expect(...).toBeVisible() etc.
+      '@typescript-eslint/unbound-method': 'off',
+      // Non-null assertions are intentional in mock/fixture helpers
+      '@typescript-eslint/no-non-null-assertion': 'off',
+      // Empty no-op functions are used as stub unlisten callbacks in mocks
+      '@typescript-eslint/no-empty-function': 'off',
+    },
+  },
+
   // Ignore build output and node_modules
   {
     ignores: ['dist/**', 'node_modules/**'],
