@@ -199,7 +199,7 @@ function themeExtension(t: Theme): Extension {
   return t === 'dracula' ? draculaTheme : lightTheme
 }
 
-export interface EditorHandle {
+interface EditorHandle {
   applySemanticTokens(tokens: SemanticToken[]): void
   applyDiagnostics(diagnostics: DiagnosticInfo[]): void
   setTheme(theme: Theme): void
