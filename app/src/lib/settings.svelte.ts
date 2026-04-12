@@ -15,14 +15,14 @@ export const FONT_SIZE_OPTIONS = [10, 11, 12, 13, 14, 15, 16, 18, 20]
  * Factory defaults — also used by `resetToDefaults`.
  * `model: null` means "use the backend default" (first entry from `get_available_models`).
  */
-export const DEFAULT_SETTINGS = {
+const DEFAULT_SETTINGS = {
   editorFontSize: 13,
   proseFontSize: 13,
   chatFontSize: 13,
   model: null as string | null,
 }
 
-export interface SettingsData {
+interface SettingsData {
   editorFontSize: number
   proseFontSize: number
   chatFontSize: number
@@ -62,7 +62,7 @@ export function parseSettings(raw: Record<string, unknown> | null | undefined): 
 /**
  * Serialize a settings object to the shape expected by the Tauri `save_settings` command.
  */
-export function serializeSettings(s: SettingsData): Record<string, unknown> {
+function serializeSettings(s: SettingsData): Record<string, unknown> {
   return {
     editor_font_size: s.editorFontSize,
     prose_font_size: s.proseFontSize,
