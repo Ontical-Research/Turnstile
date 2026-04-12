@@ -18,16 +18,126 @@
   let semanticTokens = $state<SemanticToken[] | null>(null)
   let showSettings = $state(false)
 
+  // Session state
+  let editorContent = $state('')
+  let proseText = $state('')
+  let proseHash = $state<string | null>(null)
+  let sessionDirty = $state(false)
+  let showRecoveryPrompt = $state(false)
+  let autoSavePath = $state<string | null>(null)
+
+  // Build the meta object to pass to save commands
+  function buildMeta(): {
+    format_version: number
+    created_at: string
+    saved_at: string
+    cursor_line: number
+    cursor_col: number
+    editor_scroll_top: number
+    chat_width_pct: number
+  } {
+    return {
+      format_version: 1,
+      created_at: '',
+      saved_at: '',
+      cursor_line: 0,
+      cursor_col: 0,
+      editor_scroll_top: 0,
+      chat_width_pct: 25,
+    }
+  }
+
   function handleChange(content: string): void {
+    editorContent = content
+    sessionDirty = true
     invoke('update_document', { content }).catch(() => {
       /* LSP not yet connected */
     })
   }
 
+  // Session command wrappers
+  async function newSession(): Promise<void> {
+    await invoke('new_session')
+    sessionDirty = false
+  }
+
+  async function openSession(): Promise<void> {
+    await invoke('open_session', { path: null })
+    sessionDirty = false
+  }
+
+  async function saveSession(): Promise<void> {
+    await invoke('save_session', {
+      proofLean: editorContent,
+      proseText: proseText,
+      proseHash: proseHash,
+      meta: buildMeta(),
+    })
+    sessionDirty = false
+  }
+
+  async function saveSessionAs(): Promise<void> {
+    await invoke('save_session_as', {
+      proofLean: editorContent,
+      proseText: proseText,
+      proseHash: proseHash,
+      meta: buildMeta(),
+    })
+    sessionDirty = false
+  }
+
+  async function autoSave(): Promise<void> {
+    if (!sessionDirty) return
+    await invoke('auto_save_session', {
+      proofLean: editorContent,
+      proseText: proseText,
+      proseHash: proseHash,
+      meta: buildMeta(),
+    }).catch(() => {
+      /* ignore autosave errors */
+    })
+  }
+
+  // Recovery flow helpers
+  async function restoreAutoSave(): Promise<void> {
+    showRecoveryPrompt = false
+    if (autoSavePath) {
+      await invoke('open_session', { path: autoSavePath }).catch(() => {
+        /* ignore restore errors */
+      })
+    }
+    await invoke('delete_auto_save').catch(() => {
+      /* ignore delete errors */
+    })
+  }
+
+  async function discardAutoSave(): Promise<void> {
+    showRecoveryPrompt = false
+    await invoke('delete_auto_save').catch(() => {
+      /* ignore delete errors */
+    })
+  }
+
+  // Keyboard shortcut handler — session (N/O/S/Shift+S) + settings (,)
   function handleKeydown(e: KeyboardEvent): void {
-    if (e.key === ',' && (e.metaKey || e.ctrlKey)) {
+    const meta = e.metaKey || e.ctrlKey
+    if (!meta) return
+
+    if (e.key === ',') {
       e.preventDefault()
       showSettings = true
+    } else if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault()
+      void newSession()
+    } else if (e.key === 'o' || e.key === 'O') {
+      e.preventDefault()
+      void openSession()
+    } else if ((e.key === 's' || e.key === 'S') && e.shiftKey) {
+      e.preventDefault()
+      void saveSessionAs()
+    } else if (e.key === 's' || e.key === 'S') {
+      e.preventDefault()
+      void saveSession()
     }
   }
 
@@ -61,15 +171,31 @@
       semanticTokens = tokens
     })
 
-    void Promise.all([diagPromise, tokensPromise]).then(([unlistenDiag, unlistenTokens]) => {
-      void startLsp()
-      return () => {
-        unlistenDiag()
-        unlistenTokens()
-      }
+    // Listen for prose-updated events from other components
+    const prosePromise = listen<{ text: string; hash: string | null }>('prose-updated', (data) => {
+      proseText = data.text
+      proseHash = data.hash
+      sessionDirty = true
     })
 
+    void Promise.all([diagPromise, tokensPromise, prosePromise]).then(
+      ([unlistenDiag, unlistenTokens, unlistenProse]) => {
+        void startLsp()
+        return () => {
+          unlistenDiag()
+          unlistenTokens()
+          unlistenProse()
+        }
+      },
+    )
+
+    // Start auto-save timer (every 60 seconds)
+    const autoSaveTimer = setInterval(() => {
+      void autoSave()
+    }, 60_000)
+
     return () => {
+      clearInterval(autoSaveTimer)
       window.removeEventListener('keydown', handleKeydown)
     }
   })
@@ -105,8 +231,54 @@
 
     setupVisible = false
     await invoke('start_lsp')
+
+    // Check for autosave recovery after setup is done
+    const hasAutoSave = await invoke<boolean>('check_auto_save').catch(() => false)
+    if (hasAutoSave) {
+      // Get the autosave path for restoration
+      autoSavePath = null // The backend knows the path; open_session with null will use it
+      showRecoveryPrompt = true
+    }
   }
 </script>
+
+{#if showRecoveryPrompt}
+  <!-- Recovery prompt overlay -->
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+    <div
+      class="rounded-lg p-6 shadow-xl max-w-sm w-full mx-4"
+      class:bg-[#282a36]={$theme === 'dracula'}
+      class:text-[#f8f8f2]={$theme === 'dracula'}
+      class:bg-white={$theme === 'light'}
+      class:text-[#24292f]={$theme === 'light'}
+    >
+      <h2 class="text-lg font-semibold mb-3">Restore unsaved session?</h2>
+      <p class="text-sm mb-5 opacity-75">
+        An unsaved session was found from your last Turnstile session.
+      </p>
+      <div class="flex gap-3 justify-end">
+        <button
+          onclick={() => void discardAutoSave()}
+          class="px-4 py-2 rounded text-sm font-mono opacity-75 hover:opacity-100 transition-opacity"
+          class:bg-[#44475a]={$theme === 'dracula'}
+          class:bg-[#eaeef2]={$theme === 'light'}
+        >
+          No, discard
+        </button>
+        <button
+          onclick={() => void restoreAutoSave()}
+          class="px-4 py-2 rounded text-sm font-mono font-semibold hover:opacity-90 transition-opacity"
+          class:bg-[#50fa7b]={$theme === 'dracula'}
+          class:text-[#282a36]={$theme === 'dracula'}
+          class:bg-[#0969da]={$theme === 'light'}
+          class:text-white={$theme === 'light'}
+        >
+          Yes, restore
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <SetupOverlay
   visible={setupVisible}

@@ -14,6 +14,8 @@
 pub mod chat;
 pub mod lsp;
 pub mod models;
+pub mod session;
+mod session_commands;
 pub mod settings;
 mod setup;
 
@@ -44,6 +46,10 @@ pub struct AppState {
     pub current_prose: Arc<tokio::sync::Mutex<String>>,
     /// Persisted user settings.
     pub settings: Arc<tokio::sync::Mutex<settings::Settings>>,
+    /// Path of the currently open `.turn` file (None if unsaved).
+    pub current_session_path: Arc<tokio::sync::Mutex<Option<PathBuf>>>,
+    /// Whether the session has unsaved changes.
+    pub session_dirty: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -404,6 +410,8 @@ pub fn run() {
                 current_source: Arc::new(tokio::sync::Mutex::new(String::new())),
                 current_prose: Arc::new(tokio::sync::Mutex::new(String::new())),
                 settings: Arc::new(tokio::sync::Mutex::new(initial_settings)),
+                current_session_path: Arc::new(tokio::sync::Mutex::new(None)),
+                session_dirty: Arc::new(AtomicBool::new(false)),
             });
 
             Ok(())
@@ -415,6 +423,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_setup_status,
             start_setup,
@@ -429,6 +438,15 @@ pub fn run() {
             settings::save_settings,
             settings::get_available_models,
             settings::set_model,
+            session_commands::new_session,
+            session_commands::open_session,
+            session_commands::save_session,
+            session_commands::save_session_as,
+            session_commands::auto_save_session,
+            session_commands::check_auto_save,
+            session_commands::delete_auto_save,
+            session_commands::get_last_session,
+            session_commands::set_last_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running turnstile");
