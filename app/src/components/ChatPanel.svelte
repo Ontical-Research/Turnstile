@@ -202,12 +202,12 @@
 
   <!-- Input area -->
   <div
-    class="chat-input-area flex flex-col gap-2.5 p-3 border-t border-border-default bg-surface-secondary"
+    class="chat-input-area flex flex-col gap-3 px-4 pt-4 pb-4 border-t border-border-default bg-surface-secondary"
     style="height: {inputHeight}px; flex-shrink: 0;"
   >
     <textarea
-      class="chat-input flex-1 min-h-0 w-full resize-none rounded-md border p-2.5 text-sm font-mono
-        outline-none bg-surface-secondary text-on-surface placeholder-placeholder border-border-default
+      class="chat-input flex-1 min-h-0 w-full resize-none rounded-lg border p-3 text-sm font-mono
+        outline-none bg-surface-primary text-on-surface placeholder-placeholder border-border-default
         focus:border-border-active transition-colors"
       placeholder="Ask about your Lean proof…"
       bind:value={inputText}
@@ -218,7 +218,7 @@
       <button
         onclick={() => void sendMessage()}
         aria-label="Send message"
-        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+        class="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium
           bg-accent text-on-accent hover:bg-accent-hover
           transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
           disabled:active:scale-100"
@@ -228,7 +228,7 @@
           xmlns="http://www.w3.org/2000/svg"
           viewBox="0 0 24 24"
           fill="currentColor"
-          class="w-3.5 h-3.5"
+          class="w-4 h-4"
         >
           <path
             d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z"
