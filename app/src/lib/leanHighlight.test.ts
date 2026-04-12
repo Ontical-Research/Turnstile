@@ -1,5 +1,31 @@
 import { describe, it, expect } from 'vitest'
-import { highlightLean } from './leanHighlight'
+import { escapeHtml, highlightLean } from './leanHighlight'
+
+describe('escapeHtml', () => {
+  it('escapes ampersands', () => {
+    expect(escapeHtml('a & b')).toBe('a &amp; b')
+  })
+
+  it('escapes angle brackets', () => {
+    expect(escapeHtml('<script>')).toBe('&lt;script&gt;')
+  })
+
+  it('escapes double quotes', () => {
+    expect(escapeHtml('"hello"')).toBe('&quot;hello&quot;')
+  })
+
+  it('escapes single quotes', () => {
+    expect(escapeHtml("it's")).toBe('it&#39;s')
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(escapeHtml('')).toBe('')
+  })
+
+  it('passes through safe strings unchanged', () => {
+    expect(escapeHtml('hello world')).toBe('hello world')
+  })
+})
 
 describe('highlightLean', () => {
   it('wraps keywords in cm-lean-keyword spans', () => {

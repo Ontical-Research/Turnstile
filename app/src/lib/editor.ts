@@ -50,6 +50,34 @@ import { tokenTypeToCssClass } from './tokenTypes'
 import type { Theme } from './theme'
 
 // ---------------------------------------------------------------------------
+// Bounds-checking helpers — exported for unit testing
+// ---------------------------------------------------------------------------
+
+interface DocInfo {
+  lines: number
+  lineLength: (lineNum: number) => number
+}
+
+/**
+ * Compute the character offset range [from, to) for a semantic token in
+ * a document, or `null` if the token falls outside document bounds.
+ *
+ * `lineNum` is 1-indexed.  `col` is a 0-indexed character offset within
+ * the line.  `length` is the number of characters the token spans.
+ */
+export function tokenRange(
+  lineNum: number,
+  col: number,
+  length: number,
+  doc: DocInfo,
+): { from: number; to: number } | null {
+  if (lineNum < 1 || lineNum > doc.lines) return null
+  const lineLen = doc.lineLength(lineNum)
+  if (col < 0 || col + length > lineLen) return null
+  return { from: col, to: col + length }
+}
+
+// ---------------------------------------------------------------------------
 // Effects — used to dispatch state changes from outside the editor
 // ---------------------------------------------------------------------------
 
@@ -79,6 +107,9 @@ const semanticTokensField = StateField.define<DecorationSet>({
           if (lineNum < 1 || lineNum > tr.state.doc.lines) continue
 
           const line = tr.state.doc.line(lineNum)
+          const lineLen = line.to - line.from
+          if (token.col < 0 || token.col + token.length > lineLen) continue
+
           const from = line.from + token.col
           const to = line.from + token.col + token.length
 
@@ -149,6 +180,11 @@ const diagnosticUnderlineField = StateField.define<DecorationSet>({
 
           const startLine = tr.state.doc.line(startLineNum)
           const endLine = tr.state.doc.line(endLineNum)
+          const startLineLen = startLine.to - startLine.from
+          const endLineLen = endLine.to - endLine.from
+          if (diag.start_col < 0 || diag.start_col > startLineLen) continue
+          if (diag.end_col < 0 || diag.end_col > endLineLen) continue
+
           const from = startLine.from + diag.start_col
           const to = endLine.from + diag.end_col
 

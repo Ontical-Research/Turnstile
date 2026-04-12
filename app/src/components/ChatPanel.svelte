@@ -5,7 +5,8 @@
   import type { Theme } from '../lib/theme'
   import { parseMathSegments, renderMath } from '../lib/math'
   import { highlightLean } from '../lib/leanHighlight'
-  import { escapeHtml } from '../lib/chatUtils'
+  import { escapeHtml } from '../lib/leanHighlight'
+  import { showError } from '../lib/errorNotification.svelte'
 
   // ---------------------------------------------------------------------------
   // Props
@@ -143,9 +144,13 @@
     streaming = true
     streamingContent = ''
 
-    await invoke<null>('send_chat_message', { content }).catch(() => {
-      /* backend not yet connected */
-    })
+    try {
+      await invoke<null>('send_chat_message', { content })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showError(`Failed to send message: ${msg}`)
+      streaming = false
+    }
   }
 
   function onKeydown(e: KeyboardEvent): void {

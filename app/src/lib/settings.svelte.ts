@@ -129,7 +129,11 @@ function currentValues(): SettingsData {
   return { editorFontSize, proseFontSize, chatFontSize, model, theme: themeValue }
 }
 
-export function updateSetting(key: keyof SettingsData, value: number | string | null): void {
+export async function updateSetting(
+  key: keyof SettingsData,
+  value: number | string | null,
+): Promise<void> {
+  const previous = currentValues()
   if (key === 'editorFontSize' && typeof value === 'number') {
     editorFontSize = value
   } else if (key === 'proseFontSize' && typeof value === 'number') {
@@ -141,20 +145,23 @@ export function updateSetting(key: keyof SettingsData, value: number | string | 
   } else if (key === 'theme') {
     themeValue = value === 'light' ? 'light' : 'dark'
   }
-  const s = serializeSettings(currentValues())
-  invoke('save_settings', { settings: s }).catch((err: unknown) => {
-    console.error('save_settings failed:', err)
-  })
+  try {
+    const s = serializeSettings(currentValues())
+    await invoke('save_settings', { settings: s })
+  } catch (err: unknown) {
+    applySettings(previous)
+    throw err
+  }
 }
 
-export function resetToDefaults(): void {
-  editorFontSize = DEFAULT_SETTINGS.editorFontSize
-  proseFontSize = DEFAULT_SETTINGS.proseFontSize
-  chatFontSize = DEFAULT_SETTINGS.chatFontSize
-  model = DEFAULT_SETTINGS.model
-  themeValue = DEFAULT_SETTINGS.theme
-  const s = serializeSettings(DEFAULT_SETTINGS)
-  invoke('save_settings', { settings: s }).catch((err: unknown) => {
-    console.error('save_settings failed:', err)
-  })
+export async function resetToDefaults(): Promise<void> {
+  const previous = currentValues()
+  applySettings({ ...DEFAULT_SETTINGS })
+  try {
+    const s = serializeSettings(DEFAULT_SETTINGS)
+    await invoke('save_settings', { settings: s })
+  } catch (err: unknown) {
+    applySettings(previous)
+    throw err
+  }
 }

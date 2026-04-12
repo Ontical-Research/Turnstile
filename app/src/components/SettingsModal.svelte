@@ -7,6 +7,7 @@
     resetToDefaults,
   } from '../lib/settings.svelte'
   import { invoke } from '../lib/tauri'
+  import { showError } from '../lib/errorNotification.svelte'
   import SelectField from './SelectField.svelte'
 
   const { onClose }: { onClose: () => void } = $props()
@@ -290,7 +291,10 @@
                   value={settings[field.key]}
                   options={FONT_SIZE_OPTIONS.map((s) => ({ value: s, label: `${String(s)}px` }))}
                   onchange={(v) => {
-                    updateSetting(field.key, Number(v))
+                    void updateSetting(field.key, Number(v)).catch((err: unknown) => {
+                      const msg = err instanceof Error ? err.message : String(err)
+                      showError(`Failed to save setting: ${msg}`)
+                    })
                   }}
                   data-testid="{field.id}-font-size-select"
                 />
@@ -304,7 +308,12 @@
                 class="rounded border border-border bg-bg-secondary px-3 py-1.5
                   text-[12px] text-text-secondary hover:bg-bg-tertiary hover:text-text-primary
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                onclick={resetToDefaults}
+                onclick={() => {
+                  void resetToDefaults().catch((err: unknown) => {
+                    const msg = err instanceof Error ? err.message : String(err)
+                    showError(`Failed to reset settings: ${msg}`)
+                  })
+                }}
                 data-testid="restore-defaults-button"
               >
                 Restore Defaults
@@ -325,10 +334,15 @@
                   label: m.display_name,
                 }))}
                 onchange={(v) => {
-                  updateSetting('model', String(v))
-                  invoke('set_model', { modelId: String(v) }).catch((err: unknown) => {
-                    console.error('set_model failed:', err)
-                  })
+                  void (async (): Promise<void> => {
+                    try {
+                      await updateSetting('model', String(v))
+                      await invoke('set_model', { modelId: String(v) })
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : String(err)
+                      showError(`Failed to set model: ${msg}`)
+                    }
+                  })()
                 }}
                 data-testid="model-select"
               />
