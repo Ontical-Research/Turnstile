@@ -6,6 +6,7 @@
     DiagnosticInfo,
     FileProgressRange,
     SemanticToken,
+    SessionState,
   } from './lib/tauri'
   import Editor from './components/Editor.svelte'
   import SetupOverlay from './components/SetupOverlay.svelte'
@@ -67,6 +68,7 @@
   }
 
   // Session state
+  let editorRef = $state<Editor | null>(null)
   let editorContent = $state('')
   let proseText = $state('')
   let proseHash = $state<string | null>(null)
@@ -247,6 +249,16 @@
       sessionDirty = true
     })
 
+    // Listen for session-loaded events (open/new session)
+    const sessionPromise = listen<SessionState>('session-loaded', (session) => {
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
+      editorRef?.setContent(session.proof_lean)
+      proseText = session.prose.text
+      proseHash = session.prose.tactic_state_hash
+      chatWidthPct = session.meta.chat_width_pct || 25
+      sessionDirty = false
+    })
+
     // Listen for native menu events from the Rust backend
     const menuPromise = listen<string>('menu-event', (id) => {
       handleMenuEvent(id, {
@@ -260,14 +272,29 @@
       })
     })
 
-    void Promise.all([diagPromise, tokensPromise, progressPromise, prosePromise, menuPromise]).then(
-      ([unlistenDiag, unlistenTokens, unlistenProgress, unlistenProse, unlistenMenu]) => {
+    void Promise.all([
+      diagPromise,
+      tokensPromise,
+      progressPromise,
+      prosePromise,
+      sessionPromise,
+      menuPromise,
+    ]).then(
+      ([
+        unlistenDiag,
+        unlistenTokens,
+        unlistenProgress,
+        unlistenProse,
+        unlistenSession,
+        unlistenMenu,
+      ]) => {
         void startLsp()
         return () => {
           unlistenDiag()
           unlistenTokens()
           unlistenProgress()
           unlistenProse()
+          unlistenSession()
           unlistenMenu()
         }
       },
@@ -411,6 +438,7 @@
       </div>
       <div class="flex-1 min-h-0">
         <Editor
+          bind:this={editorRef}
           initialTheme={$theme}
           theme={$theme}
           {diagnostics}
