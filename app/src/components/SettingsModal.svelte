@@ -137,11 +137,21 @@
     >
       <span class="text-[13px] font-semibold text-on-surface">Settings</span>
       <button
-        class="text-lg leading-none px-1 cursor-default text-on-surface-secondary hover:text-on-surface transition-colors"
+        class="flex items-center justify-center w-6 h-6 rounded cursor-default text-on-surface-secondary
+          hover:text-on-surface hover:bg-surface-tertiary transition-colors"
         aria-label="Close settings"
         onclick={onClose}
       >
-        ×
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke-width="2"
+          stroke="currentColor"
+          class="w-3.5 h-3.5"
+        >
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" />
+        </svg>
       </button>
     </div>
 

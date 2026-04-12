@@ -290,14 +290,14 @@
         <div class="flex gap-3 justify-end">
           <button
             onclick={() => void discardAutoSave()}
-            class="px-4 py-2 rounded-md text-sm font-mono bg-surface-tertiary text-on-surface-secondary
+            class="px-4 py-2 rounded-md text-sm font-medium bg-surface-tertiary text-on-surface-secondary
               hover:text-on-surface transition-colors"
           >
             No, discard
           </button>
           <button
             onclick={() => void restoreAutoSave()}
-            class="px-4 py-2 rounded-md text-sm font-mono font-semibold bg-accent text-on-accent
+            class="px-4 py-2 rounded-md text-sm font-semibold bg-accent text-on-accent
               hover:bg-accent-hover transition-colors"
           >
             Yes, restore
@@ -329,7 +329,7 @@
     <!-- Draggable vertical splitter -->
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
-      class="w-1.5 cursor-col-resize transition-colors flex-shrink-0"
+      class="splitter-grip w-1.5 cursor-col-resize transition-colors flex-shrink-0"
       class:bg-border-default={!splitterDragging}
       class:bg-border-active={splitterDragging}
       class:hover:bg-border-active={!splitterDragging}
@@ -346,10 +346,44 @@
     onclick={() => {
       theme.update(toggleTheme)
     }}
-    class="fixed top-3 right-3 z-20 px-2.5 py-1.5 rounded-md text-sm font-mono
-      bg-surface-tertiary text-on-surface-secondary opacity-60 hover:opacity-100 transition-opacity"
+    aria-label="Toggle theme"
+    class="fixed top-3 right-3 z-20 w-8 h-8 flex items-center justify-center rounded-full
+      bg-surface-secondary text-on-surface-secondary hover:text-on-surface hover:bg-surface-tertiary
+      transition-colors"
   >
-    {$theme === 'mocha' ? '☀' : '☾'}
+    {#if $theme === 'mocha'}
+      <!-- Heroicons: sun -->
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        class="w-4 h-4"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
+        />
+      </svg>
+    {:else}
+      <!-- Heroicons: moon -->
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke-width="1.5"
+        stroke="currentColor"
+        class="w-4 h-4"
+      >
+        <path
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"
+        />
+      </svg>
+    {/if}
   </button>
 
   {#if showSettings}

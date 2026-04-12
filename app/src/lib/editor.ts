@@ -312,7 +312,7 @@ async function lspCompletionSource(ctx: CompletionContext): Promise<CompletionRe
 const baseTheme = EditorView.baseTheme({
   '.cm-scroller': {
     overflow: 'auto',
-    fontFamily: '"Courier New", Courier, monospace',
+    fontFamily: '"JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", monospace',
     fontSize: '14px',
     lineHeight: '1.5',
   },
