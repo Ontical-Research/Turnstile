@@ -328,5 +328,5 @@
 </button>
 
 {#if showSettings}
-  <SettingsModal onClose={() => (showSettings = false)} />
+  <SettingsModal theme={$theme} onClose={() => (showSettings = false)} />
 {/if}

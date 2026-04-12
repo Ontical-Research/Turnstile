@@ -7,8 +7,9 @@
     resetToDefaults,
   } from '../lib/settings.svelte'
   import { invoke } from '../lib/tauri'
+  import type { Theme } from '../lib/theme'
 
-  const { onClose }: { onClose: () => void } = $props()
+  const { theme, onClose }: { theme: Theme; onClose: () => void } = $props()
 
   const TABS = [
     { id: 'appearance', label: 'Appearance' },
@@ -123,7 +124,11 @@
     bind:this={windowEl}
     style="width: 660px; height: 460px; min-width: 420px; min-height: 300px;
       resize: both; overflow: hidden; {windowStyle}"
-    class="flex flex-col rounded-lg border border-border bg-bg-primary shadow-2xl"
+    class="flex flex-col rounded-lg border shadow-2xl"
+    class:bg-[#282a36]={theme === 'dracula'}
+    class:border-[#44475a]={theme === 'dracula'}
+    class:bg-white={theme === 'light'}
+    class:border-[#d0d7de]={theme === 'light'}
     onclick={(e) => {
       e.stopPropagation()
     }}
@@ -131,14 +136,23 @@
   >
     <!-- Title bar — drag handle -->
     <div
-      class="flex shrink-0 cursor-move items-center justify-between border-b border-border px-4 py-3
-        select-none"
+      class="flex shrink-0 cursor-move items-center justify-between border-b px-4 py-3 select-none"
+      class:border-[#44475a]={theme === 'dracula'}
+      class:border-[#d0d7de]={theme === 'light'}
       onmousedown={onTitleMousedown}
       role="presentation"
     >
-      <span class="text-[13px] font-semibold text-text-primary">Settings</span>
+      <span
+        class="text-[13px] font-semibold"
+        class:text-[#f8f8f2]={theme === 'dracula'}
+        class:text-[#24292f]={theme === 'light'}>Settings</span
+      >
       <button
-        class="cursor-default text-text-secondary hover:text-text-primary text-lg leading-none px-1"
+        class="text-lg leading-none px-1 cursor-default"
+        class:text-[#6272a4]={theme === 'dracula'}
+        class:hover:text-[#f8f8f2]={theme === 'dracula'}
+        class:text-[#8c959f]={theme === 'light'}
+        class:hover:text-[#24292f]={theme === 'light'}
         aria-label="Close settings"
         onclick={onClose}
       >
@@ -149,13 +163,26 @@
     <!-- Body: sidebar + content -->
     <div class="flex flex-1 overflow-hidden">
       <!-- Tab sidebar -->
-      <nav class="w-40 shrink-0 border-r border-border bg-bg-secondary py-2">
+      <nav
+        class="w-40 shrink-0 border-r py-2"
+        class:bg-[#21222c]={theme === 'dracula'}
+        class:border-[#44475a]={theme === 'dracula'}
+        class:bg-[#f6f8fa]={theme === 'light'}
+        class:border-[#d0d7de]={theme === 'light'}
+      >
         {#each TABS as tab (tab.id)}
           <button
-            class="w-full px-4 py-1.5 text-left text-[12px]
-              {activeTab === tab.id
-              ? 'bg-accent text-white'
-              : 'text-text-secondary hover:bg-bg-tertiary hover:text-text-primary'}"
+            class="w-full px-4 py-1.5 text-left text-[12px]"
+            class:bg-[#50fa7b]={activeTab === tab.id && theme === 'dracula'}
+            class:text-[#282a36]={activeTab === tab.id && theme === 'dracula'}
+            class:bg-[#0969da]={activeTab === tab.id && theme === 'light'}
+            class:text-white={activeTab === tab.id && theme === 'light'}
+            class:text-[#6272a4]={activeTab !== tab.id && theme === 'dracula'}
+            class:hover:bg-[#282a36]={activeTab !== tab.id && theme === 'dracula'}
+            class:hover:text-[#f8f8f2]={activeTab !== tab.id && theme === 'dracula'}
+            class:text-[#8c959f]={activeTab !== tab.id && theme === 'light'}
+            class:hover:bg-[#eaeef2]={activeTab !== tab.id && theme === 'light'}
+            class:hover:text-[#24292f]={activeTab !== tab.id && theme === 'light'}
             onclick={() => (activeTab = tab.id)}
             data-testid="settings-tab-{tab.id}"
           >
@@ -168,20 +195,32 @@
       <div class="flex flex-1 flex-col overflow-y-auto p-5 gap-5">
         {#if activeTab === 'appearance'}
           <h3
-            class="text-[11px] font-semibold uppercase tracking-widest text-text-secondary opacity-60"
+            class="text-[11px] font-semibold uppercase tracking-widest opacity-60"
+            class:text-[#6272a4]={theme === 'dracula'}
+            class:text-[#8c959f]={theme === 'light'}
           >
             Font Sizes
           </h3>
 
           {#each FONT_FIELDS as field (field.id)}
             <div class="flex items-center justify-between">
-              <label class="text-[13px] text-text-primary" for="{field.id}-font-size">
+              <label
+                class="text-[13px]"
+                class:text-[#f8f8f2]={theme === 'dracula'}
+                class:text-[#24292f]={theme === 'light'}
+                for="{field.id}-font-size"
+              >
                 {field.label}
               </label>
               <select
                 id="{field.id}-font-size"
-                class="rounded border border-border bg-bg-secondary px-2 py-1
-                  text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                class="rounded border px-2 py-1 text-[13px] focus:outline-none"
+                class:bg-[#44475a]={theme === 'dracula'}
+                class:border-[#44475a]={theme === 'dracula'}
+                class:text-[#f8f8f2]={theme === 'dracula'}
+                class:bg-[#eaeef2]={theme === 'light'}
+                class:border-[#d0d7de]={theme === 'light'}
+                class:text-[#24292f]={theme === 'light'}
                 value={settings[field.key]}
                 onchange={(e) => {
                   updateSetting(field.key, Number((e.target as HTMLSelectElement).value))
@@ -197,10 +236,23 @@
 
           <div class="flex-1"></div>
 
-          <div class="border-t border-border pt-4">
+          <div
+            class="border-t pt-4"
+            class:border-[#44475a]={theme === 'dracula'}
+            class:border-[#d0d7de]={theme === 'light'}
+          >
             <button
-              class="rounded border border-border bg-bg-secondary px-3 py-1.5
-                text-[12px] text-text-secondary hover:bg-bg-tertiary hover:text-text-primary"
+              class="rounded border px-3 py-1.5 text-[12px]"
+              class:border-[#44475a]={theme === 'dracula'}
+              class:bg-[#44475a]={theme === 'dracula'}
+              class:text-[#6272a4]={theme === 'dracula'}
+              class:hover:bg-[#21222c]={theme === 'dracula'}
+              class:hover:text-[#f8f8f2]={theme === 'dracula'}
+              class:border-[#d0d7de]={theme === 'light'}
+              class:bg-[#eaeef2]={theme === 'light'}
+              class:text-[#8c959f]={theme === 'light'}
+              class:hover:bg-[#f6f8fa]={theme === 'light'}
+              class:hover:text-[#24292f]={theme === 'light'}
               onclick={resetToDefaults}
               data-testid="restore-defaults-button"
             >
@@ -209,17 +261,29 @@
           </div>
         {:else if activeTab === 'model'}
           <h3
-            class="text-[11px] font-semibold uppercase tracking-widest text-text-secondary opacity-60"
+            class="text-[11px] font-semibold uppercase tracking-widest opacity-60"
+            class:text-[#6272a4]={theme === 'dracula'}
+            class:text-[#8c959f]={theme === 'light'}
           >
             Language Model
           </h3>
 
           <div class="flex items-center justify-between">
-            <label class="text-[13px] text-text-primary" for="model-select">Model</label>
+            <label
+              class="text-[13px]"
+              class:text-[#f8f8f2]={theme === 'dracula'}
+              class:text-[#24292f]={theme === 'light'}
+              for="model-select">Model</label
+            >
             <select
               id="model-select"
-              class="rounded border border-border bg-bg-secondary px-2 py-1
-                text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+              class="rounded border px-2 py-1 text-[13px] focus:outline-none"
+              class:bg-[#44475a]={theme === 'dracula'}
+              class:border-[#44475a]={theme === 'dracula'}
+              class:text-[#f8f8f2]={theme === 'dracula'}
+              class:bg-[#eaeef2]={theme === 'light'}
+              class:border-[#d0d7de]={theme === 'light'}
+              class:text-[#24292f]={theme === 'light'}
               value={selectedModelId}
               onchange={handleModelChange}
               data-testid="model-select"
