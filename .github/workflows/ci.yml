@@ -19,7 +19,7 @@ jobs:
   # ── Frontend Lint & Format ───────────────────────────────────────────
   lint-frontend:
     name: Lint Frontend
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
@@ -91,10 +91,48 @@ jobs:
       - name: cargo clippy
         run: cargo clippy -- -D warnings
 
+  # ── Rust Linux Check ─────────────────────────────────────────────────
+  # Catch Linux compilation issues early without a full build.
+  check-rust-linux:
+    name: Check Rust (Linux)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies for Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libgtk-3-dev \
+            libsoup-3.0-dev \
+            libjavascriptcoregtk-4.1-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache Rust dependencies (cross-run)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ". -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: cargo check
+        run: cargo check
+
+      - name: cargo clippy
+        run: cargo clippy -- -D warnings
+
   # ── Frontend Unit Tests ──────────────────────────────────────────────
   test-vitest:
     name: Unit Tests (Vitest)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     needs: lint-frontend
 
     steps:
@@ -292,7 +330,7 @@ jobs:
   # ── E2E Tests ────────────────────────────────────────────────────────
   test-e2e:
     name: E2E Tests (Playwright)
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     # Playwright starts `npm run dev` (Vite dev server) as the web server;
     # no compiled Tauri app required.
     needs: lint-frontend
@@ -320,7 +358,7 @@ jobs:
         id: cache-playwright
         uses: actions/cache@v4
         with:
-          path: ~/Library/Caches/ms-playwright
+          path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
           restore-keys: |
             playwright-${{ runner.os }}-
@@ -343,6 +381,7 @@ jobs:
     needs:
       - lint-frontend
       - lint-rust
+      - check-rust-linux
       - compile-rust-tests
       - test-vitest
       - test-rust-unit
