@@ -21,6 +21,7 @@
   } from './lib/settings.svelte'
   import type { ModelInfo } from './lib/settings.svelte'
   import { handleMenuEvent } from './lib/menu'
+  import { errorNotification, showError, dismissError } from './lib/errorNotification.svelte'
 
   let setupVisible = $state(true)
   let setupMessage = $state('Checking Lean installation...')
@@ -140,35 +141,48 @@
   }
 
   async function saveSession(): Promise<void> {
-    await invoke('save_session', {
-      proofLean: editorContent,
-      proseText: proseText,
-      proseHash: proseHash,
-      meta: buildMeta(),
-    })
-    sessionDirty = false
+    try {
+      await invoke('save_session', {
+        proofLean: editorContent,
+        proseText: proseText,
+        proseHash: proseHash,
+        meta: buildMeta(),
+      })
+      sessionDirty = false
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showError(`Save failed: ${msg}`)
+    }
   }
 
   async function saveSessionAs(): Promise<void> {
-    await invoke('save_session_as', {
-      proofLean: editorContent,
-      proseText: proseText,
-      proseHash: proseHash,
-      meta: buildMeta(),
-    })
-    sessionDirty = false
+    try {
+      await invoke('save_session_as', {
+        proofLean: editorContent,
+        proseText: proseText,
+        proseHash: proseHash,
+        meta: buildMeta(),
+      })
+      sessionDirty = false
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showError(`Save As failed: ${msg}`)
+    }
   }
 
   async function autoSave(): Promise<void> {
     if (!sessionDirty) return
-    await invoke('auto_save_session', {
-      proofLean: editorContent,
-      proseText: proseText,
-      proseHash: proseHash,
-      meta: buildMeta(),
-    }).catch(() => {
-      /* ignore autosave errors */
-    })
+    try {
+      await invoke('auto_save_session', {
+        proofLean: editorContent,
+        proseText: proseText,
+        proseHash: proseHash,
+        meta: buildMeta(),
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      showError(`Auto-save failed: ${msg}`)
+    }
   }
 
   // Recovery flow helpers
@@ -370,6 +384,25 @@
 
 <!-- Root container: theme is applied to <html> via $effect above -->
 <div class="fixed inset-0 bg-bg-primary text-text-primary">
+  {#if errorNotification.message}
+    <div
+      role="alert"
+      class="fixed top-0 left-0 right-0 z-[60] flex items-center justify-between px-4 py-2
+        bg-red-900/90 text-red-100 text-[13px] border-b border-red-700"
+      data-testid="error-banner"
+    >
+      <span>{errorNotification.message}</span>
+      <button
+        onclick={dismissError}
+        aria-label="Dismiss error"
+        class="ml-4 shrink-0 px-2 py-0.5 rounded text-red-200 hover:text-white hover:bg-red-800
+          transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+      >
+        Dismiss
+      </button>
+    </div>
+  {/if}
+
   {#if showRecoveryPrompt}
     <!-- Recovery prompt overlay -->
     <div
@@ -491,7 +524,10 @@
         onToggleTheme={() => {
           theme.update((current) => {
             const next = toggleTheme(current)
-            updateSetting('theme', next)
+            void updateSetting('theme', next).catch((err: unknown) => {
+              const msg = err instanceof Error ? err.message : String(err)
+              showError(`Failed to save theme: ${msg}`)
+            })
             return next
           })
         }}
