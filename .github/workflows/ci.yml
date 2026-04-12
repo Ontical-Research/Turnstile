@@ -16,15 +16,14 @@ defaults:
     shell: bash
 
 jobs:
-  # ── Lint & Format ──────────────────────────────────────────────────────
-  lint-and-format:
-    name: Lint & Format
+  # ── Frontend Lint & Format ───────────────────────────────────────────
+  lint-frontend:
+    name: Lint Frontend
     runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      # ── Node setup ──────────────────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version-file: app/package.json
@@ -42,23 +41,6 @@ jobs:
         working-directory: app
         run: npm ci
 
-      # ── Rust setup ──────────────────────────────────────────────────────
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-${{ runner.os }}-
-
-      # ── Frontend checks ─────────────────────────────────────────────────
       - name: Prettier check
         working-directory: app
         run: npm run format:check
@@ -80,18 +62,47 @@ jobs:
         working-directory: app
         run: npm run knip
 
-      # ── Rust checks ─────────────────────────────────────────────────────
+  # ── Rust Lint & Format ───────────────────────────────────────────────
+  lint-rust:
+    name: Lint Rust
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Rust dependencies (cross-run)
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+          cache-on-failure: true
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # Fast check first — fail before clippy compiles.
       - name: cargo fmt --check
         run: cargo fmt --check
 
       - name: cargo clippy
         run: cargo clippy -- -D warnings
 
-  # ── Unit Tests ────────────────────────────────────────────────────────
-  test-unit:
-    name: Unit Tests
+      # Save compiled artifacts for downstream Rust jobs in this run.
+      - name: Save Rust artifacts for downstream jobs
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+
+  # ── Frontend Unit Tests ──────────────────────────────────────────────
+  test-vitest:
+    name: Unit Tests (Vitest)
     runs-on: macos-latest
-    needs: lint-and-format
+    needs: lint-frontend
 
     steps:
       - uses: actions/checkout@v4
@@ -112,47 +123,52 @@ jobs:
         working-directory: app
         run: npm ci
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-${{ runner.os }}-
-
       - name: Vitest (frontend unit tests)
         working-directory: app
         run: npm test
 
-      - name: cargo test --lib (Rust unit tests)
-        run: cargo test --lib
-
-  # ── Integration Tests ─────────────────────────────────────────────────
-  test-integration:
-    name: Integration Tests (Lean LSP)
+  # ── Rust Unit Tests ──────────────────────────────────────────────────
+  test-rust-unit:
+    name: Unit Tests (Rust)
     runs-on: macos-latest
-    needs: lint-and-format
+    needs: lint-rust
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
+      - name: Restore Rust artifacts from lint-rust
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            rust-${{ runner.os }}-
+          key: rust-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: cargo test --lib (Rust unit tests)
+        run: cargo test --lib
+
+  # ── Integration Tests ────────────────────────────────────────────────
+  test-rust-integration:
+    name: Integration Tests (Lean LSP)
+    runs-on: macos-latest
+    needs: lint-rust
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Rust artifacts from lint-rust
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: rust-compiled-${{ github.run_id }}-${{ github.run_attempt }}
 
       # The integration tests use skip_if_no_project! — they skip gracefully
       # when no Lean project is present (TURNSTILE_PROJECT_PATH unset and the
@@ -161,11 +177,11 @@ jobs:
       - name: cargo test (Lean LSP integration tests)
         run: cargo test --test lean_lsp_integration
 
-  # ── Build ─────────────────────────────────────────────────────────────
+  # ── Build ────────────────────────────────────────────────────────────
   build:
     name: Build (macOS)
     runs-on: macos-latest
-    needs: lint-and-format
+    needs: lint-rust
 
     steps:
       - uses: actions/checkout@v4
@@ -188,17 +204,22 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v4
+      - name: Restore Rust artifacts from lint-rust
+        uses: actions/cache/restore@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin/cargo-tauri
             src-tauri/target
-          key: rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          key: rust-compiled-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Cache cargo-tauri binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/cargo-tauri
+          key: cargo-tauri-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
-            rust-${{ runner.os }}-
+            cargo-tauri-${{ runner.os }}-
 
       - name: Install cargo-tauri
         run: cargo tauri --version 2>/dev/null || cargo install tauri-cli --locked
@@ -222,13 +243,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # ── E2E Tests ─────────────────────────────────────────────────────────
+  # ── E2E Tests ────────────────────────────────────────────────────────
   test-e2e:
     name: E2E Tests (Playwright)
     runs-on: macos-latest
     # Playwright starts `npm run dev` (Vite dev server) as the web server;
-    # no compiled Tauri app required. Run after unit tests pass.
-    needs: [test-unit]
+    # no compiled Tauri app required.
+    needs: lint-frontend
 
     steps:
       - uses: actions/checkout@v4
@@ -268,3 +289,29 @@ jobs:
         run: npm run test:e2e
         env:
           CI: "true"
+
+  # ── CI Gate ──────────────────────────────────────────────────────────
+  ci-pass:
+    name: CI
+    if: always()
+    needs:
+      - lint-frontend
+      - lint-rust
+      - test-vitest
+      - test-rust-unit
+      - test-rust-integration
+      - build
+      - test-e2e
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          for r in $results; do
+            if [ "$r" != "success" ]; then
+              echo "::error::Upstream job failed with result: $r"
+              exit 1
+            fi
+          done
+          echo "All jobs passed."
