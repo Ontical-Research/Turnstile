@@ -157,38 +157,38 @@ test.describe('Theme toggle', () => {
     await expect(themeToggleBtn(page)).toBeVisible()
   })
 
-  test('starts in Dracula (dark) theme', async ({ page, mountApp }) => {
+  test('starts in Mocha (dark) theme', async ({ page, mountApp }) => {
     await mountApp()
     const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'dracula')
+    await expect(root).toHaveAttribute('data-theme', 'mocha')
   })
 
-  test('toggle switches to light theme', async ({ page, mountApp }) => {
+  test('toggle switches to latte theme', async ({ page, mountApp }) => {
     await mountApp()
     await themeToggleBtn(page).click()
     const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'light')
+    await expect(root).toHaveAttribute('data-theme', 'latte')
   })
 
   test('toggle switches back to dark theme', async ({ page, mountApp }) => {
     await mountApp()
     const btn = themeToggleBtn(page)
-    await btn.click() // → light
-    await btn.click() // → dracula
+    await btn.click() // → latte
+    await btn.click() // → mocha
     const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'dracula')
+    await expect(root).toHaveAttribute('data-theme', 'mocha')
   })
 
   test('editor background changes with theme', async ({ page, mountApp }) => {
     await mountApp()
     const editor = page.locator('.cm-editor')
 
-    // Dark theme background
-    await expect(editor).toHaveCSS('background-color', 'rgb(40, 42, 54)') // #282a36
+    // Dark theme background (Catppuccin Mocha base: #1e1e2e)
+    await expect(editor).toHaveCSS('background-color', 'rgb(30, 30, 46)')
 
-    // Switch to light
+    // Switch to latte
     await themeToggleBtn(page).click()
-    await expect(editor).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+    await expect(editor).toHaveCSS('background-color', 'rgb(239, 241, 245)') // #eff1f5
   })
 })
 
@@ -589,7 +589,7 @@ test.describe('Diagnostic underlines', () => {
     await expect(page.locator('.cm-diag-error')).toHaveCount(0)
   })
 
-  test('error underline has wavy red text-decoration in Dracula theme', async ({
+  test('error underline has wavy red text-decoration in Mocha theme', async ({
     page,
     mountApp,
     emitEvent,
@@ -600,8 +600,8 @@ test.describe('Diagnostic underlines', () => {
     await expect(underlined).toBeVisible()
     const decoration = await underlined.evaluate((el) => getComputedStyle(el).textDecoration)
     expect(decoration).toContain('wavy')
-    // #ff5555 → rgb(255, 85, 85)
-    expect(decoration).toContain('rgb(255, 85, 85)')
+    // Catppuccin Mocha red #f38ba8 → rgb(243, 139, 168)
+    expect(decoration).toContain('rgb(243, 139, 168)')
   })
 
   test('multiple diagnostics produce multiple underlined spans', async ({
