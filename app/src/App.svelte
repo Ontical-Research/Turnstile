@@ -19,24 +19,45 @@
   let semanticTokens = $state<SemanticToken[] | null>(null)
   let showSettings = $state(false)
 
+  // .light on <html> so fixed-position elements (modals, overlays) inherit CSS variables.
+  $effect(() => {
+    document.documentElement.classList.toggle('light', $theme === 'light')
+  })
+
   // Splitter state for resizable chat panel
+  const CHAT_WIDTH_MIN = 10
+  const CHAT_WIDTH_MAX = 60
   let chatWidthPct = $state(25)
-  let splitterDragging = $state(false)
 
   function onSplitterDown(e: MouseEvent): void {
     e.preventDefault()
-    splitterDragging = true
     const onMove = (ev: MouseEvent): void => {
       const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
-      chatWidthPct = Math.min(60, Math.max(10, pct))
+      chatWidthPct = Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, pct))
     }
     const onUp = (): void => {
-      splitterDragging = false
       window.removeEventListener('mousemove', onMove)
       window.removeEventListener('mouseup', onUp)
     }
     window.addEventListener('mousemove', onMove)
     window.addEventListener('mouseup', onUp)
+  }
+
+  function onSplitterKeydown(e: KeyboardEvent): void {
+    const step = e.shiftKey ? 5 : 1
+    if (e.key === 'ArrowLeft') {
+      e.preventDefault()
+      chatWidthPct = Math.min(CHAT_WIDTH_MAX, chatWidthPct + step)
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault()
+      chatWidthPct = Math.max(CHAT_WIDTH_MIN, chatWidthPct - step)
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      chatWidthPct = CHAT_WIDTH_MIN
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      chatWidthPct = CHAT_WIDTH_MAX
+    }
   }
 
   // Session state
@@ -46,6 +67,24 @@
   let sessionDirty = $state(false)
   let showRecoveryPrompt = $state(false)
   let autoSavePath = $state<string | null>(null)
+  let recoveryPromptEl = $state<HTMLElement | null>(null)
+  let recoveryTriggerEl: Element | null = null
+
+  // Focus management for the recovery prompt: move focus in on open, return on close.
+  $effect(() => {
+    if (showRecoveryPrompt) {
+      recoveryTriggerEl = document.activeElement
+      // Focus the first button in the prompt on the next tick.
+      const el = recoveryPromptEl
+      if (el) {
+        const btn = el.querySelector<HTMLElement>('button')
+        if (btn) btn.focus()
+      }
+    } else if (recoveryTriggerEl instanceof HTMLElement) {
+      recoveryTriggerEl.focus()
+      recoveryTriggerEl = null
+    }
+  })
 
   // Build the meta object to pass to save commands
   function buildMeta(): {
@@ -277,28 +316,57 @@
   }
 </script>
 
-<!-- Root themed container — everything lives inside so CSS variables cascade -->
-<div class="fixed inset-0" data-theme={$theme}>
+<!-- Root container: theme is applied to <html> via $effect above -->
+<div class="fixed inset-0 bg-bg-primary text-text-primary">
   {#if showRecoveryPrompt}
     <!-- Recovery prompt overlay -->
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div class="rounded-lg p-6 shadow-xl max-w-sm w-full mx-4 bg-surface text-on-surface">
-        <h2 class="text-lg font-semibold mb-3">Restore unsaved session?</h2>
-        <p class="text-sm mb-5 text-on-surface-secondary">
+    <div
+      bind:this={recoveryPromptEl}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="recovery-prompt-title"
+      tabindex="-1"
+      data-testid="recovery-prompt"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onkeydown={(e) => {
+        if (e.key === 'Escape') void discardAutoSave()
+        // Focus trap: keep Tab/Shift+Tab within the two buttons.
+        if (e.key === 'Tab') {
+          const btns = recoveryPromptEl?.querySelectorAll<HTMLElement>('button') ?? []
+          const first = btns[0]
+          const last = btns[btns.length - 1]
+          if (!first || !last) return
+          if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault()
+            last.focus()
+          } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault()
+            first.focus()
+          }
+        }
+      }}
+    >
+      <div class="rounded-lg p-6 shadow-xl max-w-sm w-full mx-4 bg-bg-primary border border-border">
+        <h2 id="recovery-prompt-title" class="text-base font-semibold mb-3 text-text-primary">
+          Restore unsaved session?
+        </h2>
+        <p class="text-sm mb-5 text-text-secondary">
           An unsaved session was found from your last Turnstile session.
         </p>
         <div class="flex gap-3 justify-end">
           <button
             onclick={() => void discardAutoSave()}
-            class="px-4 py-2 rounded-md text-sm font-medium bg-surface-tertiary text-on-surface-secondary
-              hover:text-on-surface transition-colors"
+            class="px-3 py-1.5 rounded text-sm bg-bg-secondary text-text-secondary
+              hover:bg-bg-tertiary hover:text-text-primary transition-colors
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             No, discard
           </button>
           <button
             onclick={() => void restoreAutoSave()}
-            class="px-4 py-2 rounded-md text-sm font-semibold bg-accent text-on-accent
-              hover:bg-accent-hover transition-colors"
+            class="px-3 py-1.5 rounded text-sm font-medium bg-accent text-white
+              hover:bg-accent-hover transition-colors
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             Yes, restore
           </button>
@@ -314,77 +382,64 @@
     isError={setupError}
   />
 
-  <div class="flex h-full bg-surface">
+  <div class="flex h-full bg-bg-primary">
     <!-- Editor column (takes remaining space) -->
-    <div class="flex-1 min-w-0">
-      <Editor
-        initialTheme={$theme}
-        theme={$theme}
-        {diagnostics}
-        {semanticTokens}
-        onchange={handleChange}
-      />
+    <div class="flex flex-col flex-1 min-w-0">
+      <div
+        class="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary shrink-0"
+      >
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-accent opacity-80"></div>
+          <span
+            class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
+          >
+            Proof
+          </span>
+        </div>
+        <!-- Spacer matching the theme toggle button width in ChatPanel to keep headers aligned -->
+        <div class="w-7 h-7"></div>
+      </div>
+      <div class="flex-1 min-h-0">
+        <Editor
+          initialTheme={$theme}
+          theme={$theme}
+          {diagnostics}
+          {semanticTokens}
+          onchange={handleChange}
+        />
+      </div>
     </div>
 
-    <!-- Draggable vertical splitter -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <!-- Draggable vertical splitter — interactive separator per APG window splitter pattern -->
+    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
-      class="splitter-grip w-1.5 cursor-col-resize transition-colors flex-shrink-0"
-      class:bg-border-default={!splitterDragging}
-      class:bg-border-active={splitterDragging}
-      class:hover:bg-border-active={!splitterDragging}
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize chat panel"
+      aria-valuenow={chatWidthPct}
+      aria-valuemin={CHAT_WIDTH_MIN}
+      aria-valuemax={CHAT_WIDTH_MAX}
+      tabindex="0"
+      class="splitter-grip w-1.5 cursor-col-resize flex-shrink-0 bg-bg-tertiary
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       onmousedown={onSplitterDown}
+      onkeydown={onSplitterKeydown}
     ></div>
 
     <!-- Chat panel column (resizable width) -->
-    <div class="flex flex-col flex-shrink-0 h-full" style="width: {chatWidthPct}%">
-      <ChatPanel />
+    <div
+      class="flex flex-col flex-shrink-0 h-full border-l border-border"
+      style="width: {chatWidthPct}%"
+    >
+      <ChatPanel
+        theme={$theme}
+        onToggleTheme={() => {
+          theme.update(toggleTheme)
+        }}
+      />
     </div>
   </div>
-
-  <button
-    onclick={() => {
-      theme.update(toggleTheme)
-    }}
-    aria-label="Toggle theme"
-    class="fixed top-3 right-3 z-20 w-8 h-8 flex items-center justify-center rounded-full
-      bg-surface-secondary text-on-surface-secondary hover:text-on-surface hover:bg-surface-tertiary
-      transition-colors"
-  >
-    {#if $theme === 'mocha'}
-      <!-- Heroicons: sun -->
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="1.5"
-        stroke="currentColor"
-        class="w-4 h-4"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z"
-        />
-      </svg>
-    {:else}
-      <!-- Heroicons: moon -->
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke-width="1.5"
-        stroke="currentColor"
-        class="w-4 h-4"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z"
-        />
-      </svg>
-    {/if}
-  </button>
 
   {#if showSettings}
     <SettingsModal onClose={() => (showSettings = false)} />

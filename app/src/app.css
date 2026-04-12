@@ -41,92 +41,317 @@
 }
 
 /* ── Tailwind v4 theme tokens ─────────────────────────────────────────
-   These register semantic color names as first-class Tailwind utilities.
-   Usage: bg-surface, text-on-surface, border-default, etc.              */
+   Maps semantic names to CSS variables so bg-bg-primary, text-text-primary,
+   border-border, etc. work as Tailwind utilities — matching LeanWindow.     */
 
-@theme inline {
-  --color-surface: var(--bg-primary);
-  --color-surface-secondary: var(--bg-secondary);
-  --color-surface-tertiary: var(--bg-tertiary);
-  --color-on-surface: var(--text-primary);
-  --color-on-surface-secondary: var(--text-secondary);
-  --color-on-surface-inverse: var(--text-inverse);
-  --color-border-default: var(--border-primary);
-  --color-border-active: var(--border-active);
+@theme {
+  --color-bg-primary: var(--bg-primary);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-bg-tertiary: var(--bg-tertiary);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
-  --color-on-accent: var(--accent-text);
+  --color-accent-active: var(--accent-active);
   --color-error: var(--error);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-progress: var(--progress);
-  --color-placeholder: var(--placeholder);
   --font-sans:
     'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:
     'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', monospace;
 }
 
-/* ── Catppuccin Mocha (dark) ──────────────────────────────────────────── */
+/* ── Dark theme (default) ─────────────────────────────────────────────── */
 
-[data-theme='mocha'] {
-  --bg-primary: #1e1e2e; /* base */
-  --bg-secondary: #181825; /* mantle */
-  --bg-tertiary: #313244; /* surface0 */
-  --text-primary: #cdd6f4; /* text */
-  --text-secondary: #6c7086; /* overlay0 */
-  --text-inverse: #1e1e2e; /* base */
-  --border-primary: #45475a; /* surface1 */
-  --border-active: #89b4fa; /* blue */
-  --accent: #89b4fa; /* blue */
-  --accent-hover: #74c7ec; /* sapphire */
-  --accent-text: #1e1e2e; /* base */
-  --error: #f38ba8; /* red */
-  --warning: #fab387; /* peach */
-  --progress: #cba6f7; /* mauve */
-  --placeholder: #6c7086; /* overlay0 */
+:root {
+  --bg-primary: #1e1e1e;
+  --bg-secondary: #252526;
+  --bg-tertiary: #2d2d30;
+  --border: #3e3e42;
+  --text-primary: #e0e0e0;
+  --text-secondary: #cccccc;
+  --accent: #007acc;
+  --accent-hover: #1084d7;
+  --accent-active: #0d5fa3;
+  --error: #f48771;
+  --warning: #dcdcaa;
+  --success: #4ec9b0;
+  --progress: #007acc;
+
+  /* Semi-transparent color variants for selection and diagnostic backgrounds */
+  --selection-bg: rgba(0, 122, 204, 0.3);
+  --accent-bg: rgba(0, 122, 204, 0.2);
+  --error-bg: rgba(244, 135, 113, 0.1);
+  --warning-bg: rgba(220, 220, 170, 0.1);
+
+  /* CodeMirror syntax colors (dark) */
+  --cm-keyword: #569cd6;
+  --cm-type: #4ec9b0;
+  --cm-function: #dcdcaa;
+  --cm-string: #ce9178;
+  --cm-number: #b5cea8;
+  --cm-comment: #6a9955;
 }
 
-/* ── Catppuccin Latte (light) ─────────────────────────────────────────── */
+/* ── Light theme ──────────────────────────────────────────────────────── */
+/* Applied to <html> so CSS variables override :root everywhere, including
+   fixed-position elements (modals, overlays) that don't inherit from a
+   child div. */
 
-[data-theme='latte'] {
-  --bg-primary: #eff1f5; /* base */
-  --bg-secondary: #e6e9ef; /* mantle */
-  --bg-tertiary: #ccd0da; /* surface0 */
-  --text-primary: #4c4f69; /* text */
-  --text-secondary: #9ca0b0; /* overlay0 */
-  --text-inverse: #eff1f5; /* base */
-  --border-primary: #bcc0cc; /* surface1 */
-  --border-active: #1e66f5; /* blue */
-  --accent: #1e66f5; /* blue */
-  --accent-hover: #209fb5; /* sapphire */
-  --accent-text: #eff1f5; /* base */
-  --error: #d20f39; /* red */
-  --warning: #fe640b; /* peach */
-  --progress: #8839ef; /* mauve */
-  --placeholder: #9ca0b0; /* overlay0 */
+html.light {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f3f3;
+  --bg-tertiary: #e8e8e8;
+  --border: #d4d4d4;
+  --text-primary: #1e1e1e;
+  --text-secondary: #555555;
+  --accent: #007acc;
+  --accent-hover: #005fa3;
+  --accent-active: #004f8a;
+  --error: #e05252;
+  --warning: #8b6914;
+  --success: #1a7a5e;
+  --progress: #007acc;
+
+  /* Semi-transparent color variants — lighter opacities suit the white background */
+  --selection-bg: rgba(0, 122, 204, 0.2);
+  --accent-bg: rgba(0, 122, 204, 0.15);
+  --error-bg: rgba(224, 82, 82, 0.1);
+  --warning-bg: rgba(139, 105, 20, 0.1);
+
+  /* CodeMirror syntax colors (light) */
+  --cm-keyword: #0000ff;
+  --cm-type: #267f99;
+  --cm-function: #795e26;
+  --cm-string: #a31515;
+  --cm-number: #098658;
+  --cm-comment: #008000;
 }
 
 /* ── Global reset ─────────────────────────────────────────────────────── */
 
-* {
-  margin: 0;
-  box-sizing: border-box;
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  html,
+  body,
+  #app {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: var(--font-sans);
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+  }
 }
 
-html {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+/* ── CodeMirror overrides ─────────────────────────────────────────────── */
 
-html,
-body,
-#app {
-  width: 100%;
+.cm-editor {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   height: 100%;
-  font-family: var(--font-sans);
+  font-family: var(--font-mono);
+  font-size: var(--editor-font-size, 13px);
+  line-height: 1.5;
 }
 
-/* ── Chat inline code (Lean highlighting inside chat messages) ────────── */
+.cm-gutters {
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border);
+}
+
+.cm-linenumber {
+  color: var(--text-secondary);
+  min-width: 40px;
+}
+
+.cm-cursor {
+  border-left-color: var(--accent);
+}
+
+.cm-selectionBackground {
+  background-color: var(--accent-bg);
+}
+
+.cm-lineNumbers .cm-gutterElement {
+  padding: 0 8px;
+  text-align: right;
+}
+
+.cm-content {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.cm-keyword {
+  color: var(--cm-keyword);
+}
+.cm-type {
+  color: var(--cm-type);
+}
+.cm-variable {
+  color: var(--text-primary);
+}
+.cm-function {
+  color: var(--cm-function);
+}
+.cm-string {
+  color: var(--cm-string);
+}
+.cm-number {
+  color: var(--cm-number);
+}
+.cm-comment {
+  color: var(--cm-comment);
+  font-style: italic;
+}
+.cm-operator {
+  color: var(--text-secondary);
+}
+
+.cm-diagnostic {
+  padding: 4px 6px;
+  margin: 4px 0;
+  border-left: 3px solid;
+}
+
+.cm-diagnostic-error {
+  border-left-color: var(--error);
+  background-color: var(--error-bg);
+  color: var(--error);
+  font-size: 12px;
+}
+
+.cm-diagnostic-warning {
+  border-left-color: var(--warning);
+  background-color: var(--warning-bg);
+  color: var(--warning);
+  font-size: 12px;
+}
+
+.cm-underline {
+  text-decoration: wavy underline;
+  text-underline-offset: 2px;
+}
+
+.cm-underline-error {
+  text-decoration-color: var(--error);
+}
+
+.cm-underline-warning {
+  text-decoration-color: var(--warning);
+}
+
+/* Semantic token highlights (from LSP semanticTokens/full) */
+.cm-semantic-keyword {
+  color: var(--cm-keyword);
+  font-weight: bold;
+}
+
+.cm-semantic-type,
+.cm-semantic-class,
+.cm-semantic-struct,
+.cm-semantic-enum,
+.cm-semantic-interface,
+.cm-semantic-typeParameter {
+  color: var(--cm-type);
+}
+
+.cm-semantic-function,
+.cm-semantic-method,
+.cm-semantic-macro {
+  color: var(--cm-function);
+}
+
+.cm-semantic-variable,
+.cm-semantic-parameter,
+.cm-semantic-property,
+.cm-semantic-enumMember {
+  color: var(--text-primary);
+}
+
+.cm-semantic-namespace {
+  color: var(--cm-type);
+  font-style: italic;
+}
+
+.cm-semantic-comment {
+  color: var(--cm-comment);
+  font-style: italic;
+}
+
+.cm-semantic-string {
+  color: var(--cm-string);
+}
+
+.cm-semantic-number {
+  color: var(--cm-number);
+}
+
+.cm-semantic-operator,
+.cm-semantic-modifier {
+  color: var(--text-secondary);
+}
+
+/* Lint gutter icons */
+.cm-lint-marker-error {
+  color: var(--error);
+}
+
+.cm-lint-marker-warning {
+  color: var(--warning);
+}
+
+/* Lint range underlines (from @codemirror/lint) */
+.cm-lintRange-error {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='3'><path d='m0 2.5 l2 -1.5 l1 0 l2 1.5 l1 0' stroke='%23f48771' fill='none' stroke-width='1.2'/></svg>");
+  background-repeat: repeat-x;
+  background-position: bottom left;
+}
+
+.cm-lintRange-warning {
+  background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='6' height='3'><path d='m0 2.5 l2 -1.5 l1 0 l2 1.5 l1 0' stroke='%23dcdcaa' fill='none' stroke-width='1.2'/></svg>");
+  background-repeat: repeat-x;
+  background-position: bottom left;
+}
+
+/* ── Webkit scrollbars ────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 5px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}
+
+/* ── Chat inline code ─────────────────────────────────────────────────── */
 
 .chat-lean-code {
   font-family: var(--font-mono);
@@ -136,7 +361,7 @@ body,
   background: var(--bg-tertiary);
 }
 
-/* ── Splitter grip indicator ─────────────────────────────────────────── */
+/* ── Splitter grip indicator ──────────────────────────────────────────── */
 
 .splitter-grip {
   position: relative;
@@ -151,12 +376,73 @@ body,
   width: 3px;
   height: 28px;
   border-radius: 2px;
-  background: var(--border-primary);
+  background: var(--border);
   opacity: 0.5;
   transition: opacity 0.15s;
 }
 
 .splitter-grip:hover::after {
   opacity: 1;
-  background: var(--border-active);
+  background: var(--accent);
+}
+
+/* ── LSP activity blink ───────────────────────────────────────────────── */
+
+@keyframes lspBlink {
+  0% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.15;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+.lsp-blink {
+  animation: lspBlink 0.3s ease-out;
+}
+
+/* ── Chat message animation ───────────────────────────────────────────── */
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-slide-in {
+  animation: slideIn 0.2s ease-out;
+}
+
+/* ── Message content HTML ─────────────────────────────────────────────── */
+
+.message-html code {
+  background-color: var(--bg-tertiary);
+  padding: 2px 4px;
+  border-radius: 2px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.message-html pre {
+  background-color: var(--bg-secondary);
+  padding: 8px;
+  border-radius: 4px;
+  overflow-x: auto;
+  margin: 4px 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.message-html pre code {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
 }
