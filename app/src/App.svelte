@@ -13,7 +13,12 @@
   import ChatPanel from './components/ChatPanel.svelte'
   import SettingsModal from './components/SettingsModal.svelte'
   import { theme, toggleTheme } from './lib/theme'
-  import { parseSettings, applySettings, setAvailableModels } from './lib/settings.svelte'
+  import {
+    parseSettings,
+    applySettings,
+    setAvailableModels,
+    updateSetting,
+  } from './lib/settings.svelte'
   import type { ModelInfo } from './lib/settings.svelte'
   import { handleMenuEvent } from './lib/menu'
 
@@ -215,7 +220,9 @@
     // Load persisted settings and available models from Rust backend.
     invoke<Record<string, unknown>>('get_settings')
       .then((raw) => {
-        applySettings(parseSettings(raw))
+        const parsed = parseSettings(raw)
+        applySettings(parsed)
+        theme.set(parsed.theme)
       })
       .catch(() => {
         /* use defaults */
@@ -349,6 +356,14 @@
       // Get the autosave path for restoration
       autoSavePath = null // The backend knows the path; open_session with null will use it
       showRecoveryPrompt = true
+    } else {
+      // No autosave — try reopening the last saved session.
+      const lastPath = await invoke<string | null>('get_last_session').catch(() => null)
+      if (lastPath) {
+        await invoke('open_session', { path: lastPath }).catch(() => {
+          // File may have been moved/deleted since last run — silently ignore.
+        })
+      }
     }
   }
 </script>
@@ -474,7 +489,11 @@
       <ChatPanel
         theme={$theme}
         onToggleTheme={() => {
-          theme.update(toggleTheme)
+          theme.update((current) => {
+            const next = toggleTheme(current)
+            updateSetting('theme', next)
+            return next
+          })
         }}
       />
     </div>
