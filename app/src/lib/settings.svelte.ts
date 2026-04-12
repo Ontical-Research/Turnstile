@@ -127,9 +127,9 @@ export function updateSetting(key: keyof SettingsData, value: number | string | 
     model = typeof value === 'string' ? value : null
   }
   const s = serializeSettings(currentValues())
-  invoke('save_settings', { settings: s }).catch((err: unknown) =>
-    console.error('save_settings failed:', err),
-  )
+  invoke('save_settings', { settings: s }).catch((err: unknown) => {
+    console.error('save_settings failed:', err)
+  })
 }
 
 export function resetToDefaults(): void {
@@ -138,7 +138,7 @@ export function resetToDefaults(): void {
   chatFontSize = DEFAULT_SETTINGS.chatFontSize
   model = DEFAULT_SETTINGS.model
   const s = serializeSettings(DEFAULT_SETTINGS)
-  invoke('save_settings', { settings: s }).catch((err: unknown) =>
-    console.error('save_settings failed:', err),
-  )
+  invoke('save_settings', { settings: s }).catch((err: unknown) => {
+    console.error('save_settings failed:', err)
+  })
 }

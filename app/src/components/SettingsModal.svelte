@@ -8,7 +8,7 @@
   } from '../lib/settings.svelte'
   import { invoke } from '../lib/tauri'
 
-  const { onClose } = $props()
+  const { onClose }: { onClose: () => void } = $props()
 
   const TABS = [
     { id: 'appearance', label: 'Appearance' },
@@ -46,30 +46,32 @@
 
   // Reactive style string — recomputed only when posX/posY change.
   const windowStyle = $derived(
-    posX === null ? '' : `position: fixed; left: ${posX}px; top: ${posY}px; transform: none;`,
+    posX === null
+      ? ''
+      : `position: fixed; left: ${String(posX)}px; top: ${String(posY ?? 0)}px; transform: none;`,
   )
 
-  function handleModelChange(e: Event) {
+  function handleModelChange(e: Event): void {
     const id = (e.target as HTMLSelectElement).value
     updateSetting('model', id)
-    invoke('set_model', { modelId: id }).catch((err: unknown) =>
-      console.error('set_model failed:', err),
-    )
+    invoke('set_model', { modelId: id }).catch((err: unknown) => {
+      console.error('set_model failed:', err)
+    })
   }
 
-  function handleKeydown(e: KeyboardEvent) {
+  function handleKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape') {
       onClose()
     }
   }
 
-  function handleBackdropClick(e: MouseEvent) {
+  function handleBackdropClick(e: MouseEvent): void {
     if (e.target === e.currentTarget) {
       onClose()
     }
   }
 
-  function onTitleMousedown(e: MouseEvent) {
+  function onTitleMousedown(e: MouseEvent): void {
     // Only drag on primary button; ignore clicks on the close button.
     if (e.button !== 0 || (e.target as Element).closest('button')) {
       return
@@ -78,17 +80,18 @@
 
     // Capture the modal's actual screen position at drag start — works whether
     // the modal is still CSS-centered or already at an explicit position.
-    const rect = windowEl!.getBoundingClientRect()
+    if (!windowEl) return
+    const rect = windowEl.getBoundingClientRect()
     const startX = rect.left
     const startY = rect.top
     const mouseStartX = e.clientX
     const mouseStartY = e.clientY
 
-    function onMousemove(me: MouseEvent) {
+    function onMousemove(me: MouseEvent): void {
       posX = startX + (me.clientX - mouseStartX)
       posY = startY + (me.clientY - mouseStartY)
     }
-    function onMouseup() {
+    function onMouseup(): void {
       dragCleanup = null
       window.removeEventListener('mousemove', onMousemove)
       window.removeEventListener('mouseup', onMouseup)
@@ -110,7 +113,9 @@
   tabindex="-1"
   class="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
   onclick={handleBackdropClick}
-  onkeydown={(e) => e.key === 'Escape' && onClose()}
+  onkeydown={(e) => {
+    if (e.key === 'Escape') onClose()
+  }}
   data-testid="settings-modal"
 >
   <!-- Modal window: fixed default size, user-resizable -->
@@ -119,7 +124,9 @@
     style="width: 660px; height: 460px; min-width: 420px; min-height: 300px;
       resize: both; overflow: hidden; {windowStyle}"
     class="flex flex-col rounded-lg border border-border bg-bg-primary shadow-2xl"
-    onclick={(e) => e.stopPropagation()}
+    onclick={(e) => {
+      e.stopPropagation()
+    }}
     role="presentation"
   >
     <!-- Title bar — drag handle -->
@@ -176,8 +183,9 @@
                 class="rounded border border-border bg-bg-secondary px-2 py-1
                   text-[13px] text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
                 value={settings[field.key]}
-                onchange={(e) =>
-                  updateSetting(field.key, Number((e.target as HTMLSelectElement).value))}
+                onchange={(e) => {
+                  updateSetting(field.key, Number((e.target as HTMLSelectElement).value))
+                }}
                 data-testid="{field.id}-font-size-select"
               >
                 {#each FONT_SIZE_OPTIONS as size (size)}
