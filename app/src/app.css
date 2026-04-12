@@ -2,6 +2,44 @@
 @import './styles/lean.css';
 @import 'katex/dist/katex.min.css';
 
+/* ── Bundled fonts ───────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Inter';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/Inter-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/Inter-Medium.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Inter';
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/Inter-SemiBold.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/JetBrainsMono-Medium.woff2') format('woff2');
+}
+
 /* ── Tailwind v4 theme tokens ─────────────────────────────────────────
    These register semantic color names as first-class Tailwind utilities.
    Usage: bg-surface, text-on-surface, border-default, etc.              */
@@ -21,6 +59,10 @@
   --color-error: var(--error);
   --color-progress: var(--progress);
   --color-placeholder: var(--placeholder);
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono:
+    'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', monospace;
 }
 
 /* ── Catppuccin Mocha (dark) ──────────────────────────────────────────── */
@@ -71,19 +113,51 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
 html,
 body,
 #app {
   width: 100%;
   height: 100%;
+  font-family: var(--font-sans);
 }
 
 /* ── Chat inline code (Lean highlighting inside chat messages) ────────── */
 
 .chat-lean-code {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 0.9em;
   padding: 1px 4px;
   border-radius: 3px;
   background: var(--bg-tertiary);
+}
+
+/* ── Splitter grip indicator ─────────────────────────────────────────── */
+
+.splitter-grip {
+  position: relative;
+}
+
+.splitter-grip::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 3px;
+  height: 28px;
+  border-radius: 2px;
+  background: var(--border-primary);
+  opacity: 0.5;
+  transition: opacity 0.15s;
+}
+
+.splitter-grip:hover::after {
+  opacity: 1;
+  background: var(--border-active);
 }

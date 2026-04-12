@@ -157,20 +157,33 @@
 <div
   class="chat-panel flex flex-col h-full border-l border-border-default bg-surface text-on-surface"
 >
+  <!-- Panel header -->
+  <div
+    class="flex items-center px-4 py-2.5 border-b border-border-default bg-surface-secondary shrink-0"
+  >
+    <span class="text-xs font-medium tracking-wide uppercase text-on-surface-secondary">Chat</span>
+  </div>
+
   <!-- Message history -->
-  <div class="chat-history flex-1 overflow-y-auto p-4 space-y-3">
+  <div class="chat-history flex-1 overflow-y-auto p-4 space-y-4">
     {#each messages as message (message.id)}
-      <div
-        class="chat-message rounded-lg px-4 py-3 text-sm max-w-full break-words"
-        class:chat-message-user={message.role === 'user'}
-        class:chat-message-assistant={message.role === 'assistant'}
-        class:bg-surface-tertiary={message.role === 'user'}
-        class:ml-4={message.role === 'user'}
-        class:italic={message.role === 'assistant'}
-      >
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- content is sanitised via escapeHtml and rendered by KaTeX -->
-        {@html renderContent(message.content)}
-      </div>
+      {#if message.role === 'user'}
+        <div
+          class="chat-message chat-message-user rounded-lg rounded-tr-sm px-4 py-3 text-sm
+            max-w-full break-words ml-8 bg-surface-tertiary"
+        >
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- content is sanitised via escapeHtml and rendered by KaTeX -->
+          {@html renderContent(message.content)}
+        </div>
+      {:else}
+        <div
+          class="chat-message chat-message-assistant rounded-lg rounded-tl-sm px-4 py-3 text-sm
+            max-w-full break-words mr-8 bg-surface-secondary"
+        >
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- content is sanitised via escapeHtml and rendered by KaTeX -->
+          {@html renderContent(message.content)}
+        </div>
+      {/if}
     {/each}
     <!-- Scroll anchor — always keep at the bottom -->
     <div bind:this={scrollAnchor} class="chat-scroll-anchor h-0"></div>
@@ -189,7 +202,7 @@
 
   <!-- Input area -->
   <div
-    class="chat-input-area flex flex-col gap-2.5 p-3 bg-surface-secondary"
+    class="chat-input-area flex flex-col gap-2.5 p-3 border-t border-border-default bg-surface-secondary"
     style="height: {inputHeight}px; flex-shrink: 0;"
   >
     <textarea

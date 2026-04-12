@@ -62,7 +62,7 @@
 
 /* Lean LSP diagnostic hover popup */
 .lean-diag-popup {
-  font-family: 'Courier New', Courier, monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.4;
   padding: 4px 8px;
