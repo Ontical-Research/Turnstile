@@ -178,8 +178,11 @@ jobs:
         run: cargo test --test lean_lsp_integration
 
   # ── Build ────────────────────────────────────────────────────────────
+  # Clippy already proves compilation on PRs; only produce the full
+  # app bundle on pushes to main.
   build:
     name: Build (macOS)
+    if: github.event_name == 'push'
     runs-on: macos-latest
     needs: lint-rust
 
@@ -309,7 +312,7 @@ jobs:
         run: |
           results="${{ join(needs.*.result, ' ') }}"
           for r in $results; do
-            if [ "$r" != "success" ]; then
+            if [ "$r" != "success" ] && [ "$r" != "skipped" ]; then
               echo "::error::Upstream job failed with result: $r"
               exit 1
             fi
