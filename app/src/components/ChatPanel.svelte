@@ -205,9 +205,14 @@
   ></div>
 
   <!-- Input area -->
-  <div class="chat-input-area p-2" style="height: {inputHeight}px; flex-shrink: 0;">
+  <div
+    class="chat-input-area flex flex-col gap-2 p-2"
+    style="height: {inputHeight}px; flex-shrink: 0;"
+    class:bg-[#21222c]={theme === 'dracula'}
+    class:bg-[#f6f8fa]={theme === 'light'}
+  >
     <textarea
-      class="chat-input w-full h-full resize-none rounded border p-2 text-sm font-mono outline-none"
+      class="chat-input flex-1 min-h-0 w-full resize-none rounded border p-2 text-sm font-mono outline-none"
       class:bg-[#21222c]={theme === 'dracula'}
       class:text-[#f8f8f2]={theme === 'dracula'}
       class:placeholder-[#6272a4]={theme === 'dracula'}
@@ -220,5 +225,38 @@
       bind:value={inputText}
       onkeydown={onKeydown}
     ></textarea>
+    <div class="flex items-center justify-between shrink-0">
+      <span
+        class="text-[11px]"
+        class:text-[#6272a4]={theme === 'dracula'}
+        class:text-[#8c959f]={theme === 'light'}>Enter to send · Shift+Enter for newline</span
+      >
+      <button
+        onclick={() => void sendMessage()}
+        aria-label="Send message"
+        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-medium
+          transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed
+          disabled:active:scale-100"
+        class:bg-[#50fa7b]={theme === 'dracula'}
+        class:text-[#282a36]={theme === 'dracula'}
+        class:hover:bg-[#69ff8f]={theme === 'dracula'}
+        class:bg-[#0969da]={theme === 'light'}
+        class:text-white={theme === 'light'}
+        class:hover:bg-[#0550ae]={theme === 'light'}
+        disabled={!inputText.trim()}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          class="w-3.5 h-3.5"
+        >
+          <path
+            d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z"
+          />
+        </svg>
+        Send
+      </button>
+    </div>
   </div>
 </div>
