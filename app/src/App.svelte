@@ -27,7 +27,15 @@
   let autoSavePath = $state<string | null>(null)
 
   // Build the meta object to pass to save commands
-  function buildMeta() {
+  function buildMeta(): {
+    format_version: number
+    created_at: string
+    saved_at: string
+    cursor_line: number
+    cursor_col: number
+    editor_scroll_top: number
+    chat_width_pct: number
+  } {
     return {
       format_version: 1,
       created_at: '',
