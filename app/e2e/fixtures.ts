@@ -38,6 +38,8 @@ export const LEAN_MULTI_STEP_PROOF = `theorem and_comm (p q : Prop) (hp : p) (hq
 export interface TauriMockOptions {
   /** Whether get_setup_status returns complete:true (default true) */
   setupComplete?: boolean
+  /** Whether check_auto_save returns true, showing the recovery prompt (default false) */
+  hasAutoSave?: boolean
   /** Diagnostics to emit via lsp-diagnostics event (default []) */
   diagnostics?: DiagnosticInfoFixture[]
   /** Semantic tokens to emit via lsp-semantic-tokens event (default []) */
@@ -73,10 +75,16 @@ export interface CompletionItemFixture {
  * Must be called in a `page.addInitScript` before navigation.
  */
 export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): Promise<void> {
-  const { setupComplete = true, diagnostics = [], semanticTokens = [], completionItems = [] } = opts
+  const {
+    setupComplete = true,
+    hasAutoSave = false,
+    diagnostics = [],
+    semanticTokens = [],
+    completionItems = [],
+  } = opts
 
   await page.addInitScript(
-    ({ setupComplete, diagnostics, semanticTokens, completionItems }) => {
+    ({ setupComplete, hasAutoSave, diagnostics, semanticTokens, completionItems }) => {
       type Listener = (e: { payload: unknown }) => void
       const listeners = new Map<string, Listener[]>()
 
@@ -111,6 +119,8 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
               ])
             if (cmd === 'save_settings') return Promise.resolve(null)
             if (cmd === 'set_model') return Promise.resolve(null)
+            if (cmd === 'check_auto_save') return Promise.resolve(hasAutoSave)
+            if (cmd === 'delete_auto_save') return Promise.resolve(null)
             return Promise.resolve(null)
           },
         },
@@ -173,7 +183,7 @@ export async function injectTauriMock(page: Page, opts: TauriMockOptions = {}): 
         return originalInvoke(cmd, args)
       }
     },
-    { setupComplete, diagnostics, semanticTokens, completionItems },
+    { setupComplete, hasAutoSave, diagnostics, semanticTokens, completionItems },
   )
 }
 

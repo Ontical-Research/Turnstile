@@ -20,44 +20,46 @@
   cursor: pointer;
 }
 
-/* Lean 4 semantic token highlighting — Catppuccin Mocha (default/dark) */
+/* Lean 4 semantic token highlighting — VS Code dark (default) */
 .cm-lean-keyword {
-  color: #cba6f7; /* mauve */
+  color: var(--cm-keyword);
+  font-weight: bold;
 }
 .cm-lean-type {
-  color: #f9e2af; /* yellow */
+  color: var(--cm-type);
 }
 .cm-lean-function {
-  color: #89b4fa; /* blue */
+  color: var(--cm-function);
 }
 .cm-lean-variable {
-  color: #cdd6f4; /* text */
+  color: var(--text-primary);
 }
 .cm-lean-namespace {
-  color: #94e2d5; /* teal */
+  color: var(--cm-type);
+  font-style: italic;
 }
 .cm-lean-enum-member {
-  color: #fab387; /* peach */
+  color: var(--cm-number);
 }
 .cm-lean-macro {
-  color: #f5c2e7; /* pink */
+  color: var(--cm-function);
   font-style: italic;
 }
 .cm-lean-comment {
-  color: #6c7086; /* overlay0 */
+  color: var(--cm-comment);
   font-style: italic;
 }
 .cm-lean-string {
-  color: #a6e3a1; /* green */
+  color: var(--cm-string);
 }
 .cm-lean-number {
-  color: #fab387; /* peach */
+  color: var(--cm-number);
 }
 .cm-lean-operator {
-  color: #89dceb; /* sky */
+  color: var(--text-secondary);
 }
 .cm-lean-decorator {
-  color: #f38ba8; /* red */
+  color: var(--error);
 }
 
 /* Lean LSP diagnostic hover popup */
@@ -71,7 +73,7 @@
   white-space: pre-wrap;
   word-break: break-word;
   background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  border: 1px solid var(--border);
   color: var(--text-primary);
 }
 
@@ -113,55 +115,10 @@
   outline: none;
 }
 
-/* Catppuccin Latte (light) — syntax highlighting overrides */
-[data-theme='latte'] .cm-lean-keyword {
-  color: #8839ef; /* mauve */
-}
-[data-theme='latte'] .cm-lean-type {
-  color: #df8e1d; /* yellow */
-}
-[data-theme='latte'] .cm-lean-function {
-  color: #1e66f5; /* blue */
-}
-[data-theme='latte'] .cm-lean-variable {
-  color: #4c4f69; /* text */
-}
-[data-theme='latte'] .cm-lean-namespace {
-  color: #179299; /* teal */
-}
-[data-theme='latte'] .cm-lean-enum-member {
-  color: #fe640b; /* peach */
-}
-[data-theme='latte'] .cm-lean-macro {
-  color: #ea76cb; /* pink */
-  font-style: italic;
-}
-[data-theme='latte'] .cm-lean-comment {
-  color: #9ca0b0; /* overlay0 */
-  font-style: italic;
-}
-[data-theme='latte'] .cm-lean-string {
-  color: #40a02b; /* green */
-}
-[data-theme='latte'] .cm-lean-number {
-  color: #fe640b; /* peach */
-}
-[data-theme='latte'] .cm-lean-operator {
-  color: #04a5e5; /* sky */
-}
-[data-theme='latte'] .cm-lean-decorator {
-  color: #d20f39; /* red */
-}
-
 /* Selection highlight — CM6's drawSelection layer does not render in WKWebView,
    so drawSelection is excluded from the editor setup and native ::selection is
    used instead. */
 .cm-editor .cm-line ::selection,
 .cm-editor .cm-line::selection {
-  background-color: #45475a !important; /* surface1 mocha */
-}
-
-[data-theme='latte'] .cm-editor .cm-line ::selection,
-[data-theme='latte'] .cm-editor .cm-line::selection {
-  background-color: #bcc0cc !important; /* surface1 latte */
+  background-color: var(--selection-bg) !important;
 }

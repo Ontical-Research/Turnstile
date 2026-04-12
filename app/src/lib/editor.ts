@@ -319,19 +319,19 @@ const baseTheme = EditorView.baseTheme({
 })
 
 // Shared color theme using CSS custom properties — the actual values are set
-// by [data-theme="mocha"] / [data-theme="latte"] selectors in app.css.
+// by :root (dark) / .light selectors in app.css.
 // We still need the themeCompartment to toggle CM6's `dark` boolean for
 // scrollbar appearance and highlight-style fallback.
 const darkTheme = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' },
-    '.cm-content': { caretColor: 'var(--text-primary)' },
-    '.cm-cursor': { borderLeftColor: 'var(--text-primary)' },
+    '.cm-content': { caretColor: 'var(--accent)' },
+    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
     '.cm-activeLine': { backgroundColor: 'var(--bg-tertiary)' },
     '.cm-gutters': {
       backgroundColor: 'var(--bg-secondary)',
       color: 'var(--text-secondary)',
-      border: 'none',
+      borderRight: '1px solid var(--border)',
       paddingLeft: '8px',
     },
     '.cm-activeLineGutter': { backgroundColor: 'var(--bg-tertiary)' },
@@ -342,14 +342,13 @@ const darkTheme = EditorView.theme(
 const lightTheme = EditorView.theme(
   {
     '&': { height: '100%', backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' },
-    '.cm-content': { caretColor: 'var(--text-primary)' },
-    '.cm-cursor': { borderLeftColor: 'var(--text-primary)' },
+    '.cm-content': { caretColor: 'var(--accent)' },
+    '.cm-cursor': { borderLeftColor: 'var(--accent)' },
     '.cm-activeLine': { backgroundColor: 'var(--bg-secondary)' },
     '.cm-gutters': {
       backgroundColor: 'var(--bg-secondary)',
       color: 'var(--text-secondary)',
-      border: 'none',
-      borderRight: '1px solid var(--border-primary)',
+      borderRight: '1px solid var(--border)',
       paddingLeft: '8px',
     },
     '.cm-activeLineGutter': { backgroundColor: 'var(--bg-tertiary)' },
@@ -358,7 +357,7 @@ const lightTheme = EditorView.theme(
 )
 
 function themeExtension(t: Theme): Extension {
-  return t === 'mocha' ? darkTheme : lightTheme
+  return t === 'dark' ? darkTheme : lightTheme
 }
 
 interface EditorHandle {

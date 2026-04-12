@@ -157,38 +157,35 @@ test.describe('Theme toggle', () => {
     await expect(themeToggleBtn(page)).toBeVisible()
   })
 
-  test('starts in Mocha (dark) theme', async ({ page, mountApp }) => {
+  test('starts in dark theme', async ({ page, mountApp }) => {
     await mountApp()
-    const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'mocha')
+    await expect(page.locator('html')).not.toHaveClass(/light/)
   })
 
-  test('toggle switches to latte theme', async ({ page, mountApp }) => {
+  test('toggle switches to light theme', async ({ page, mountApp }) => {
     await mountApp()
     await themeToggleBtn(page).click()
-    const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'latte')
+    await expect(page.locator('html')).toHaveClass(/light/)
   })
 
   test('toggle switches back to dark theme', async ({ page, mountApp }) => {
     await mountApp()
     const btn = themeToggleBtn(page)
-    await btn.click() // → latte
-    await btn.click() // → mocha
-    const root = page.locator('[data-theme]')
-    await expect(root).toHaveAttribute('data-theme', 'mocha')
+    await btn.click() // → light
+    await btn.click() // → dark
+    await expect(page.locator('html')).not.toHaveClass(/light/)
   })
 
   test('editor background changes with theme', async ({ page, mountApp }) => {
     await mountApp()
     const editor = page.locator('.cm-editor')
 
-    // Dark theme background (Catppuccin Mocha base: #1e1e2e)
-    await expect(editor).toHaveCSS('background-color', 'rgb(30, 30, 46)')
+    // Dark theme background (VS Code dark: #1e1e1e)
+    await expect(editor).toHaveCSS('background-color', 'rgb(30, 30, 30)')
 
-    // Switch to latte
+    // Switch to light
     await themeToggleBtn(page).click()
-    await expect(editor).toHaveCSS('background-color', 'rgb(239, 241, 245)') // #eff1f5
+    await expect(editor).toHaveCSS('background-color', 'rgb(255, 255, 255)') // #ffffff
   })
 })
 
@@ -589,7 +586,7 @@ test.describe('Diagnostic underlines', () => {
     await expect(page.locator('.cm-diag-error')).toHaveCount(0)
   })
 
-  test('error underline has wavy red text-decoration in Mocha theme', async ({
+  test('error underline has wavy red text-decoration in dark theme', async ({
     page,
     mountApp,
     emitEvent,
@@ -600,8 +597,8 @@ test.describe('Diagnostic underlines', () => {
     await expect(underlined).toBeVisible()
     const decoration = await underlined.evaluate((el) => getComputedStyle(el).textDecoration)
     expect(decoration).toContain('wavy')
-    // Catppuccin Mocha red #f38ba8 → rgb(243, 139, 168)
-    expect(decoration).toContain('rgb(243, 139, 168)')
+    // VS Code dark error red #f48771 → rgb(244, 135, 113)
+    expect(decoration).toContain('rgb(244, 135, 113)')
   })
 
   test('multiple diagnostics produce multiple underlined spans', async ({
