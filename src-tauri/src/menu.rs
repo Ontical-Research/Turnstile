@@ -5,8 +5,12 @@
 //! Settings, Hide/Show, and Quit — following Apple HIG.  On Windows/Linux
 //! Settings and Quit live inside the File menu instead.
 
-use tauri::menu::{AboutMetadata, MenuBuilder, MenuItem, SubmenuBuilder};
-use tauri::{include_image, AppHandle, Runtime};
+#[cfg(target_os = "macos")]
+use tauri::include_image;
+#[cfg(target_os = "macos")]
+use tauri::menu::AboutMetadata;
+use tauri::menu::{MenuBuilder, MenuItem, SubmenuBuilder};
+use tauri::{AppHandle, Runtime};
 
 // ── Menu item IDs (public so tests can assert on them) ──────────────────────
 
