@@ -241,6 +241,9 @@ jobs:
       - name: cargo llvm-cov --lib (Rust unit tests with coverage)
         run: cargo llvm-cov --lib --lcov --output-path lcov-rust.info
 
+      - name: Normalize Rust LCOV paths to repo-relative
+        run: sed -i'' "s|SF:${GITHUB_WORKSPACE}/||g" lcov-rust.info
+
       - name: Upload Rust coverage to Codecov
         if: always()
         uses: codecov/codecov-action@v5
