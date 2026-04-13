@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte'
-  import { FONT_SIZE_OPTIONS, settings, createDraft } from '../lib/settings.svelte'
+  import { FONT_SIZE_OPTIONS, settings, createDraft, updateSetting } from '../lib/settings.svelte'
   import { invoke } from '../lib/tauri'
   import { showError } from '../lib/errorNotification.svelte'
   import { theme } from '../lib/theme'

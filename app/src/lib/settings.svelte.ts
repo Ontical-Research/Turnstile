@@ -186,7 +186,7 @@ class SettingsDraft {
   proseFontSize = $state(DEFAULT_SETTINGS.proseFontSize)
   chatFontSize = $state(DEFAULT_SETTINGS.chatFontSize)
   model = $state<string | null>(DEFAULT_SETTINGS.model)
-  theme = $state<Theme>(DEFAULT_SETTINGS.theme)
+  theme = $state<ThemePreference>(DEFAULT_SETTINGS.theme)
 
   constructor(keys: SettingsKey[], options?: DraftOptions) {
     this.#keys = keys
