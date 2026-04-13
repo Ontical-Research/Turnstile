@@ -1,7 +1,11 @@
-# Tauri + Leptos
+# Turnstile
 
-This template should help get you started developing with Tauri and Leptos.
+[![CI](https://github.com/Ontical-Research/Turnstile/actions/workflows/ci.yml/badge.svg)](https://github.com/Ontical-Research/Turnstile/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Ontical-Research/Turnstile/graph/badge.svg)](https://codecov.io/gh/Ontical-Research/Turnstile)
 
-## Recommended IDE Setup
+Turnstile is a desktop application for interactively proving [Lean](https://lean-lang.org/) theorems with AI assistance.
 
-[VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer).
+- Write and edit Lean proofs in a dedicated editor
+- Get real-time diagnostics and goal state from the Lean language server
+- Use an integrated AI chat to help draft and refine proofs
+- Save and load proof sessions
