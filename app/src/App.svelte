@@ -384,22 +384,27 @@
 
 <!-- Root container: theme is applied to <html> via $effect above -->
 <div class="fixed inset-0 bg-bg-primary text-text-primary">
-  {#if errorNotification.message}
-    <div
-      role="alert"
-      class="fixed top-0 left-0 right-0 z-[60] flex items-center justify-between px-4 py-2
-        bg-red-900/90 text-red-100 text-[13px] border-b border-red-700"
-      data-testid="error-banner"
-    >
-      <span>{errorNotification.message}</span>
-      <button
-        onclick={dismissError}
-        aria-label="Dismiss error"
-        class="ml-4 shrink-0 px-2 py-0.5 rounded text-red-200 hover:text-white hover:bg-red-800
-          transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-      >
-        Dismiss
-      </button>
+  {#if errorNotification.messages.length > 0}
+    <div class="fixed top-0 left-0 right-0 z-[60] flex flex-col" data-testid="error-banner">
+      {#each errorNotification.messages as message, i (message)}
+        <div
+          role="alert"
+          class="flex items-center justify-between px-4 py-2
+            bg-red-900/90 text-red-100 text-[13px] border-b border-red-700"
+        >
+          <span>{message}</span>
+          <button
+            onclick={() => {
+              dismissError(i)
+            }}
+            aria-label="Dismiss error"
+            class="ml-4 shrink-0 px-2 py-0.5 rounded text-red-200 hover:text-white hover:bg-red-800
+              transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
+            Dismiss
+          </button>
+        </div>
+      {/each}
     </div>
   {/if}
 

@@ -1,25 +1,32 @@
 /**
  * Lightweight error notification state for surfacing user-facing errors.
  *
- * Exposes a single reactive error message string (or null when no error is
- * active). Errors persist until explicitly dismissed by the user.
+ * Maintains a reactive stack of error messages. Errors persist until
+ * explicitly dismissed by the user. Duplicate messages are ignored.
  */
 
-let errorMessage = $state<string | null>(null)
+const errors = $state<string[]>([])
 
-/** Reactive read-only accessor for the current error message. */
+/** Reactive read-only accessor for the current error messages. */
 export const errorNotification = {
-  get message(): string | null {
-    return errorMessage
+  get messages(): readonly string[] {
+    return errors
   },
 }
 
-/** Show an error message. Persists until dismissed. */
+/** Show an error message. Duplicates are ignored. */
 export function showError(message: string): void {
-  errorMessage = message
+  if (!errors.includes(message)) {
+    errors.push(message)
+  }
 }
 
-/** Immediately dismiss the current error. */
-export function dismissError(): void {
-  errorMessage = null
+/** Dismiss the error at the given index. */
+export function dismissError(index: number): void {
+  errors.splice(index, 1)
+}
+
+/** Dismiss all errors. */
+export function dismissAllErrors(): void {
+  errors.length = 0
 }
