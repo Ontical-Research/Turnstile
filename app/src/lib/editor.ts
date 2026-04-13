@@ -4,6 +4,7 @@ import {
   StateEffect,
   RangeSet,
   Compartment,
+  Transaction,
   type Extension,
   type Range,
 } from '@codemirror/state'
@@ -24,7 +25,7 @@ import {
   highlightActiveLine,
   keymap,
 } from '@codemirror/view'
-import { history, defaultKeymap, historyKeymap } from '@codemirror/commands'
+import { history, defaultKeymap, historyKeymap, indentWithTab } from '@codemirror/commands'
 import {
   foldGutter,
   foldKeymap,
@@ -53,6 +54,50 @@ import {
   semanticTokenRange,
 } from './editorHelpers'
 import type { Theme } from './theme'
+import { findAbbrevReplacement } from './leanAbbrev'
+
+// ---------------------------------------------------------------------------
+// Lean abbreviation expansion — updateListener
+// ---------------------------------------------------------------------------
+//
+// After each user input transaction, checks if the text just before the
+// cursor completes a Lean abbreviation (e.g. \alpha, \to<space>). The
+// replacement is dispatched asynchronously (after the current update cycle)
+// to avoid the "dispatch during update" error.
+
+const leanAbbrevExtension = EditorView.updateListener.of((update: ViewUpdate) => {
+  if (!update.docChanged) return
+
+  for (const tr of update.transactions) {
+    if (!tr.isUserEvent('input.type') && !tr.isUserEvent('input.type.compose')) continue
+
+    const pos = tr.state.selection.main.head
+    // Slice only 100 chars back — no abbreviation is longer than ~20 chars.
+    const windowStart = Math.max(0, pos - 100)
+    const win = tr.state.doc.sliceString(windowStart, pos)
+
+    const match = findAbbrevReplacement(win, win.length)
+    if (!match) continue
+
+    const docFrom = windowStart + match.from
+    const docTo = windowStart + match.to
+    const newCursorDocPos =
+      match.cursorOffset !== null
+        ? docFrom + match.cursorOffset
+        : docFrom + match.replacement.length
+
+    const view = update.view
+    // Defer dispatch to avoid "update already in progress" error.
+    void Promise.resolve().then(() => {
+      view.dispatch({
+        changes: { from: docFrom, to: docTo, insert: match.replacement },
+        selection: { anchor: newCursorDocPos },
+        annotations: Transaction.userEvent.of('input.abbrev'),
+      })
+    })
+    break
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Effects — used to dispatch state changes from outside the editor
@@ -348,6 +393,7 @@ export function mountEditor(
         highlightActiveLine(),
         highlightSelectionMatches(),
         keymap.of([
+          indentWithTab,
           ...closeBracketsKeymap,
           ...defaultKeymap,
           ...searchKeymap,
@@ -356,6 +402,7 @@ export function mountEditor(
           ...completionKeymap,
           ...lintKeymap,
         ]),
+        leanAbbrevExtension,
         semanticTokensField,
         diagnosticsField,
         diagnosticListField,

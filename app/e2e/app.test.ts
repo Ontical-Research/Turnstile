@@ -679,3 +679,34 @@ test.describe('Diagnostic hover popup', () => {
     await expect(dot).not.toHaveAttribute('title')
   })
 })
+
+// ---------------------------------------------------------------------------
+// Lean abbreviation expansion in the proof editor
+// ---------------------------------------------------------------------------
+
+test.describe('Lean abbreviation expansion', () => {
+  test('\\alpha expands to α when unambiguous', async ({ page, mountApp }) => {
+    await mountApp()
+    await page.locator('.cm-content').click()
+    await page.keyboard.type('\\alpha')
+    const text = await page.locator('.cm-content').textContent()
+    expect(text ?? '').toContain('α')
+  })
+
+  test('\\to expands to → when followed by a space', async ({ page, mountApp }) => {
+    await mountApp()
+    await page.locator('.cm-content').click()
+    await page.keyboard.type('\\to ')
+    const text = await page.locator('.cm-content').textContent()
+    expect(text ?? '').toContain('→')
+  })
+
+  test('\\\\  expands to a literal backslash', async ({ page, mountApp }) => {
+    await mountApp()
+    await page.locator('.cm-content').click()
+    await page.keyboard.type('\\\\')
+    const text = await page.locator('.cm-content').textContent()
+    expect(text ?? '').toContain('\\')
+    expect(text ?? '').not.toContain('\\\\')
+  })
+})

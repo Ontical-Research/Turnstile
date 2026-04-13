@@ -54,7 +54,7 @@ describe('errorNotification', () => {
     showError('Error to dismiss')
     dismissError()
 
-    // Even after 5s, message stays null (timer was cancelled)
+    // Even after 5s, message stays null (timer was canceled)
     vi.advanceTimersByTime(5_000)
     expect(errorNotification.message).toBeNull()
   })

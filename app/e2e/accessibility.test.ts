@@ -1,9 +1,16 @@
-import { type Locator } from '@playwright/test'
+import { type Locator, type Page } from '@playwright/test'
 import { test, expect } from './fixtures'
 
 /** Returns the computed box-shadow (Tailwind ring utilities render as box-shadow). */
 async function focusRing(locator: Locator): Promise<string> {
   return locator.evaluate((el) => getComputedStyle(el).boxShadow)
+}
+
+/** Returns true if focus is currently inside the CodeMirror editor. */
+async function editorHasFocus(page: Page): Promise<boolean> {
+  return page.evaluate(() =>
+    Boolean(document.querySelector('.cm-content')?.contains(document.activeElement)),
+  )
 }
 
 // ---------------------------------------------------------------------------
@@ -511,6 +518,44 @@ test.describe('Dialog ARIA semantics', () => {
     await discardBtn.focus()
     await page.keyboard.press('Enter')
     await expect(prompt).not.toBeVisible()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Proof editor Tab key handling
+// ---------------------------------------------------------------------------
+
+test.describe('Proof editor Tab key handling', () => {
+  test('Tab inserts indentation and does not move focus away from the editor', async ({
+    page,
+    mountApp,
+  }) => {
+    await mountApp()
+    const editor = page.locator('.cm-content')
+    await editor.click()
+
+    await page.keyboard.press('Tab')
+
+    expect(await editorHasFocus(page)).toBe(true)
+
+    // The editor content must start with whitespace — indentWithTab inserts
+    // the editor's indent unit (spaces or a tab depending on config).
+    const text = (await editor.textContent()) ?? ''
+    expect(text).toMatch(/^\s+/)
+  })
+
+  test('Shift+Tab dedents and does not move focus away from the editor', async ({
+    page,
+    mountApp,
+  }) => {
+    await mountApp()
+    const editor = page.locator('.cm-content')
+    await editor.click()
+
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('Shift+Tab')
+
+    expect(await editorHasFocus(page)).toBe(true)
   })
 })
 

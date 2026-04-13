@@ -338,7 +338,7 @@
                     try {
                       await updateSetting('model', String(v))
                       await invoke('set_model', { modelId: String(v) })
-                    } catch (err: unknown) {
+                    } catch (err) {
                       const msg = err instanceof Error ? err.message : String(err)
                       showError(`Failed to set model: ${msg}`)
                     }

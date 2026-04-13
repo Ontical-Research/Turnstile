@@ -10,8 +10,8 @@
 //! # Context management
 //!
 //! When the running token estimate exceeds 75 % of `ChatState::max_tokens`, the
-//! backend summarises the oldest 75 % of turns into a single string stored in
-//! `ChatState::summary`.  Summarisation is an async LLM call that does not block
+//! backend summarizes the oldest 75 % of turns into a single string stored in
+//! `ChatState::summary`.  Summarization is an async LLM call that does not block
 //! the UI; new messages keep arriving normally while it runs.
 //!
 //! # Backend selection
@@ -50,7 +50,7 @@ pub struct Turn {
     pub timestamp: i64,
 }
 
-/// Serialisable snapshot of the conversation — the unit stored in `.turn` files.
+/// Serializable snapshot of the conversation — the unit stored in `.turn` files.
 ///
 /// ```json
 /// {
@@ -61,7 +61,7 @@ pub struct Turn {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ChatState {
     pub summary: Option<String>,
-    /// Active turns (the most-recent portion after any summarisation).
+    /// Active turns (the most-recent portion after any summarization).
     pub transcript: Vec<Turn>,
     /// Soft context-window limit in tokens. Default 200 000 (Claude claude-sonnet-4-6).
     #[serde(default = "default_max_tokens")]
@@ -214,11 +214,11 @@ pub fn token_estimate(state: &ChatState) -> usize {
     summary_tokens + turn_tokens
 }
 
-/// Summarise the oldest 75 % of turns using `backend`, storing the result in
+/// Summarize the oldest 75 % of turns using `backend`, storing the result in
 /// `state.summary` and removing those turns from `state.transcript`.
 ///
 /// If `state.transcript` has fewer than 2 turns nothing is changed (we need
-/// at least 2 turns to make summarisation worthwhile).
+/// at least 2 turns to make summarization worthwhile).
 pub async fn summarize_oldest(
     state: &mut ChatState,
     backend: &dyn ChatBackend,
@@ -232,7 +232,7 @@ pub async fn summarize_oldest(
     let cut = (n * 3 / 4).max(1);
     let to_summarize: Vec<Turn> = state.transcript.drain(..cut).collect();
 
-    // Build a lightweight state containing only what we want summarised.
+    // Build a lightweight state containing only what we want summarized.
     let summary_state = ChatState {
         summary: state.summary.clone(),
         transcript: to_summarize,
@@ -761,7 +761,7 @@ impl ChatBackend for AnthropicBackend {
 // Tauri command handlers
 // ---------------------------------------------------------------------------
 
-/// Append a user message, optionally summarise context, call the LLM, return
+/// Append a user message, optionally summarize context, call the LLM, return
 /// the assistant response content.
 #[tauri::command]
 pub async fn send_chat_message(
@@ -773,7 +773,7 @@ pub async fn send_chat_message(
     let chat_state_arc = state.chat_state.clone();
     let tools = default_tools();
 
-    // Append user turn and check if summarisation is needed.
+    // Append user turn and check if summarization is needed.
     {
         let mut chat_state = chat_state_arc.lock().await;
         chat_state.transcript.push(Turn {
@@ -804,7 +804,7 @@ pub async fn send_chat_message(
     Ok(response_content)
 }
 
-/// Return the current chat state (for save-file serialisation).
+/// Return the current chat state (for save-file serialization).
 #[tauri::command]
 pub async fn get_chat_state(state: tauri::State<'_, crate::AppState>) -> Result<ChatState, String> {
     Ok(state.chat_state.lock().await.clone())
