@@ -148,7 +148,7 @@ export async function updateSetting(
   try {
     const s = serializeSettings(currentValues())
     await invoke('save_settings', { settings: s })
-  } catch (err: unknown) {
+  } catch (err) {
     applySettings(previous)
     throw err
   }
@@ -160,7 +160,7 @@ export async function resetToDefaults(): Promise<void> {
   try {
     const s = serializeSettings(DEFAULT_SETTINGS)
     await invoke('save_settings', { settings: s })
-  } catch (err: unknown) {
+  } catch (err) {
     applySettings(previous)
     throw err
   }

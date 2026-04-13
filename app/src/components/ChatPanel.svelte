@@ -162,7 +162,7 @@
 
     try {
       await invoke<null>('send_chat_message', { content })
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showError(`Failed to send message: ${msg}`)
       streaming = false

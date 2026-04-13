@@ -149,7 +149,7 @@
         meta: buildMeta(),
       })
       sessionDirty = false
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showError(`Save failed: ${msg}`)
     }
@@ -164,7 +164,7 @@
         meta: buildMeta(),
       })
       sessionDirty = false
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showError(`Save As failed: ${msg}`)
     }
@@ -179,7 +179,7 @@
         proseHash: proseHash,
         meta: buildMeta(),
       })
-    } catch (err: unknown) {
+    } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showError(`Auto-save failed: ${msg}`)
     }

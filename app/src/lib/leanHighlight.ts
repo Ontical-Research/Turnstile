@@ -2,7 +2,7 @@
  * Lightweight regex-based Lean syntax highlighter for read-only display.
  *
  * Applies the same ``cm-lean-*`` CSS classes used by the CodeMirror editor,
- * so chat messages share the editor's colour scheme without spinning up a
+ * so chat messages share the editor's color scheme without spinning up a
  * full CM6 instance.
  *
  * Coverage: keywords, strings, comments, numbers, operators.  Identifiers
@@ -90,9 +90,9 @@ const LEAN_KEYWORDS = new Set([
 ])
 
 /**
- * Tokenise ``code`` and return an HTML string with ``cm-lean-*`` spans.
+ * Tokenize ``code`` and return an HTML string with ``cm-lean-*`` spans.
  *
- * The tokeniser processes the string left-to-right, consuming the longest
+ * The tokenizer processes the string left-to-right, consuming the longest
  * match at each position in this priority order:
  *
  * 1. Line comment  (-- … end of line)
