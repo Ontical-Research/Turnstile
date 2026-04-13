@@ -211,15 +211,37 @@ function plainTextLength(el: HTMLElement): number {
  * DOM position (container + offset).
  */
 function computePlainTextLength(el: HTMLElement, container: Node, offset: number): number {
+  // When the container IS el, offset is a child index — sum children up to that index.
+  if (container === el) {
+    let len = 0
+    for (let i = 0; i < offset; i++) {
+      const child: ChildNode | undefined = el.childNodes[i]
+      if (!child) break
+      if (child.nodeType === Node.TEXT_NODE) {
+        len += (child.textContent ?? '').length
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const source = (child as HTMLElement).getAttribute('data-source')
+        if (source !== null) {
+          len += source.length
+        } else if ((child as HTMLElement).tagName === 'BR') {
+          len += 1
+        } else {
+          len += plainTextLength(child as HTMLElement)
+        }
+      }
+    }
+    return len
+  }
+
   let len = 0
 
   for (const node of el.childNodes) {
     if (node === container) {
-      // The cursor is in this node
+      // The cursor is in this text node
       if (node.nodeType === Node.TEXT_NODE) {
         return len + offset
       }
-      // container is an element — offset refers to child index
+      // container is a child element — offset refers to its child index
       const elem = node as HTMLElement
       for (let i = 0; i < offset; i++) {
         const child: ChildNode | undefined = elem.childNodes[i]
@@ -255,11 +277,6 @@ function computePlainTextLength(el: HTMLElement, container: Node, offset: number
         len += plainTextLength(elem)
       }
     }
-  }
-
-  // If container is el itself, offset refers to child index
-  if (container === el) {
-    return len
   }
 
   return len
