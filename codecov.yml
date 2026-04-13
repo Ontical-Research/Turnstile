@@ -1,0 +1,33 @@
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+      frontend:
+        target: auto
+        threshold: 1%
+        flags:
+          - frontend
+        paths:
+          - app/
+      rust:
+        target: auto
+        threshold: 1%
+        flags:
+          - rust
+        paths:
+          - src-tauri/
+    patch:
+      default:
+        target: 70%
+
+flags:
+  frontend:
+    paths:
+      - app/
+    carryforward: true
+  rust:
+    paths:
+      - src-tauri/
+    carryforward: true
