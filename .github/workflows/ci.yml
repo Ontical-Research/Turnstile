@@ -284,6 +284,9 @@ jobs:
           touch -t "$ts" .cargo/config.toml
 
       # ── Lean toolchain setup ──────────────────────────────────────────
+      - name: Set Lean project path
+        run: echo "LEAN_PROJECT=$HOME/lean-ci-project" >> "$GITHUB_ENV"
+
       - name: Extract Lean toolchain and Mathlib versions
         id: lean-versions
         run: |
@@ -312,12 +315,12 @@ jobs:
         id: cache-lean-project
         uses: actions/cache@v4
         with:
-          path: ~/lean-ci-project/.lake
+          path: ${{ env.LEAN_PROJECT }}/.lake
           key: lean-project-${{ runner.os }}-${{ steps.lean-versions.outputs.mathlib-rev }}
 
       - name: Create Lean project
         run: |
-          proj=~/lean-ci-project
+          proj="$LEAN_PROJECT"
           mkdir -p "$proj"
           echo '${{ steps.lean-versions.outputs.lean-toolchain }}' > "$proj/lean-toolchain"
           printf '%s\n' \
@@ -340,25 +343,23 @@ jobs:
 
       - name: Fetch Mathlib (lake update)
         if: steps.cache-lean-project.outputs.cache-hit != 'true'
-        working-directory: ~/lean-ci-project
-        run: lake update
+        run: cd "$LEAN_PROJECT" && lake update
 
       - name: Download Mathlib build cache
         if: steps.cache-lean-project.outputs.cache-hit != 'true'
-        working-directory: ~/lean-ci-project
-        run: lake exe cache get
+        run: cd "$LEAN_PROJECT" && lake exe cache get
 
       - name: Verify Lean setup
         run: |
           lean --version
           lake --version
-          test -d ~/lean-ci-project/.lake/packages/mathlib
+          test -d "$LEAN_PROJECT/.lake/packages/mathlib"
 
       # ── Run integration tests with coverage ───────────────────────────
       - name: cargo llvm-cov (Lean LSP integration tests)
         run: cargo llvm-cov --test lean_lsp_integration --lcov --output-path lcov-integration.info
         env:
-          TURNSTILE_PROJECT_PATH: ~/lean-ci-project
+          TURNSTILE_PROJECT_PATH: ${{ env.LEAN_PROJECT }}
 
       - name: Normalize integration LCOV paths to repo-relative
         run: sed -i '' "s|SF:${GITHUB_WORKSPACE}/||g" lcov-integration.info
