@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use log::{debug, error, info, warn};
@@ -637,6 +637,47 @@ pub fn parse_token_legend(result: &Value) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// A server-to-client LSP notification we know how to handle.
+///
+/// Serde dispatches on the JSON-RPC `method` field, which gives us three
+/// compile-time guarantees that the previous string-match dispatch lacked:
+/// method names cannot contain typos, the match over this enum is
+/// exhaustive, and adding a new notification is a compile error until
+/// every caller handles it.
+///
+/// Params for `publishDiagnostics` and `fileProgress` are held as raw
+/// `Value` so the existing `parse_diagnostics` / `parse_file_progress`
+/// functions (which flatten the LSP wire shape into frontend-ready
+/// 1-indexed structs) remain the single source of truth for those
+/// shapes. `window/logMessage` and `window/showMessage` share
+/// `LogMessageParams` because the LSP spec gives them identical payloads.
+#[derive(Debug, Deserialize)]
+#[serde(tag = "method", content = "params")]
+pub enum LspNotification {
+    #[serde(rename = "textDocument/publishDiagnostics")]
+    PublishDiagnostics(Value),
+    #[serde(rename = "$/lean/fileProgress")]
+    FileProgress(Value),
+    #[serde(rename = "window/logMessage")]
+    LogMessage(LogMessageParams),
+    #[serde(rename = "window/showMessage")]
+    ShowMessage(LogMessageParams),
+}
+
+/// Params for `window/logMessage` and `window/showMessage`.
+///
+/// Per the LSP spec both notifications share this shape:
+///   `{ "type": MessageType, "message": string }`
+/// where `MessageType` is 1 = error, 2 = warning, 3 = info, 4 = log.
+/// Only `message` is used today, but `message_type` is kept so future
+/// callers can severity-gate without re-parsing.
+#[derive(Debug, Deserialize)]
+pub struct LogMessageParams {
+    #[serde(rename = "type")]
+    pub message_type: u8,
+    pub message: String,
+}
+
 /// Parse a `textDocument/publishDiagnostics` notification params.
 pub fn parse_diagnostics(params: &Value) -> Vec<DiagnosticInfo> {
     let Some(diags) = params.get("diagnostics").and_then(|d| d.as_array()) else {
@@ -1206,6 +1247,95 @@ mod tests {
     #[test]
     fn parse_file_progress_missing_processing_returns_empty() {
         assert!(parse_file_progress(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn lsp_notification_parses_publish_diagnostics() {
+        let msg = json!({
+            "method": "textDocument/publishDiagnostics",
+            "params": { "diagnostics": [] }
+        });
+        let parsed: LspNotification =
+            serde_json::from_value(msg).expect("should deserialize as PublishDiagnostics");
+        assert!(matches!(parsed, LspNotification::PublishDiagnostics(_)));
+    }
+
+    #[test]
+    fn lsp_notification_parses_file_progress() {
+        let msg = json!({
+            "method": "$/lean/fileProgress",
+            "params": { "processing": [] }
+        });
+        let parsed: LspNotification =
+            serde_json::from_value(msg).expect("should deserialize as FileProgress");
+        assert!(matches!(parsed, LspNotification::FileProgress(_)));
+    }
+
+    #[test]
+    fn lsp_notification_parses_log_message() {
+        let msg = json!({
+            "method": "window/logMessage",
+            "params": { "type": 3, "message": "hello" }
+        });
+        let parsed: LspNotification =
+            serde_json::from_value(msg).expect("should deserialize as LogMessage");
+        match parsed {
+            LspNotification::LogMessage(p) => {
+                assert_eq!(p.message_type, 3);
+                assert_eq!(p.message, "hello");
+            }
+            _ => panic!("expected LogMessage variant"),
+        }
+    }
+
+    #[test]
+    fn lsp_notification_parses_show_message() {
+        let msg = json!({
+            "method": "window/showMessage",
+            "params": { "type": 1, "message": "oops" }
+        });
+        let parsed: LspNotification =
+            serde_json::from_value(msg).expect("should deserialize as ShowMessage");
+        assert!(matches!(parsed, LspNotification::ShowMessage(_)));
+    }
+
+    #[test]
+    fn lsp_notification_rejects_unknown_method() {
+        let msg = json!({
+            "method": "some/unknownMethod",
+            "params": {}
+        });
+        let result: Result<LspNotification, _> = serde_json::from_value(msg);
+        assert!(
+            result.is_err(),
+            "unknown methods must fail deserialization, not fall through silently"
+        );
+    }
+
+    #[test]
+    fn lsp_notification_pipes_publish_diagnostics_params_to_parser() {
+        // Smoke test: confirm the raw Value held by PublishDiagnostics can be
+        // handed back to parse_diagnostics unchanged.
+        let msg = json!({
+            "method": "textDocument/publishDiagnostics",
+            "params": {
+                "diagnostics": [{
+                    "range": {
+                        "start": { "line": 0, "character": 0 },
+                        "end":   { "line": 0, "character": 3 }
+                    },
+                    "severity": 1,
+                    "message": "boom"
+                }]
+            }
+        });
+        let parsed: LspNotification = serde_json::from_value(msg).unwrap();
+        let LspNotification::PublishDiagnostics(params) = parsed else {
+            panic!("expected PublishDiagnostics");
+        };
+        let diags = parse_diagnostics(&params);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(diags[0].message, "boom");
     }
 
     #[test]
