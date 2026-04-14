@@ -1,13 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from 'svelte'
   import { invoke, listen } from './lib/tauri'
-  import type {
-    SetupProgressPayload,
-    DiagnosticInfo,
-    FileProgressRange,
-    SemanticToken,
-    SessionState,
-  } from './lib/tauri'
+  import type { SetupProgressPayload } from './lib/tauri'
   import Editor from './components/Editor.svelte'
   import SetupOverlay from './components/SetupOverlay.svelte'
   import ChatPanel from './components/ChatPanel.svelte'
@@ -16,9 +10,7 @@
   import ProsePanel from './components/ProsePanel.svelte'
   import GoalPanel from './components/GoalPanel.svelte'
   import SymbolOutline from './components/SymbolOutline.svelte'
-  import { renderContent } from './lib/renderContent'
-  import { lspDocumentSymbols, type DocumentSymbolInfo } from './lib/lspRequests'
-  import { buildGoalLineMap } from './lib/goalLineMap'
+  import { lspDocumentSymbols } from './lib/lspRequests'
   import { theme, systemTheme, toggleTheme, resolveTheme } from './lib/theme'
   import type { ResolvedTheme } from './lib/theme'
   import {
@@ -32,34 +24,45 @@
   import { handleMenuEvent } from './lib/menu'
   import { syncSaveMenuState } from './lib/saveIndicator'
   import { errorNotification, showError, dismissError } from './lib/errorNotification.svelte'
-  import { getTheoremTitle, titleToFilename } from './lib/theoremName'
+  import { lspState, setOutlineSymbols, setupLspListeners } from './lib/lspState.svelte'
+  import {
+    layoutState,
+    setChatWidthPct,
+    setGoalPanelPct,
+    toggleWordWrap,
+    setOutlineOpen,
+    CHAT_WIDTH_MIN,
+    CHAT_WIDTH_MAX,
+    GOAL_PANEL_MIN,
+    GOAL_PANEL_MAX,
+  } from './lib/layoutState.svelte'
+  import {
+    sessionState,
+    setEditorContent,
+    setProofView,
+    setProseGenerating,
+    newSession,
+    openSession,
+    saveSession,
+    saveSessionAs,
+    autoSave,
+    reopenLastSession,
+    setupSessionListeners,
+    type SessionSetupDeps,
+  } from './lib/sessionState.svelte'
+  import { installKeyboardShortcuts } from './lib/keyboard'
 
   let setupVisible = $state(true)
   let setupMessage = $state('Checking Lean installation...')
   let setupProgress = $state(0)
   let setupError = $state(false)
-  let diagnostics = $state<DiagnosticInfo[] | null>(null)
-  let semanticTokens = $state<SemanticToken[] | null>(null)
-  let fileProgress = $state<FileProgressRange[] | null>(null)
   let showSettings = $state(false)
-
-  // Word wrap — authoritative state lives here so it round-trips through .turn.
-  let wordWrap = $state(false)
 
   // Cursor position displayed in the footer row (0-indexed to 1-indexed).
   let cursorLineDisplay = $state(1)
   let cursorColDisplay = $state(1)
 
-  // Symbol outline (Cmd+Shift+O) command palette.
-  let outlineOpen = $state(false)
-  let outlineSymbols = $state<DocumentSymbolInfo[]>([])
-
   const PROOF_URI = 'file:///proof.lean'
-
-  function toggleWordWrap(): void {
-    wordWrap = !wordWrap
-    sessionDirty = true
-  }
 
   function handleExternalDef(uri: string): void {
     showError(`Definition is in another file — out of scope for now (${uri})`)
@@ -68,8 +71,8 @@
   async function openSymbolOutline(): Promise<void> {
     try {
       const symbols = await lspDocumentSymbols()
-      outlineSymbols = symbols
-      outlineOpen = true
+      setOutlineSymbols(symbols)
+      setOutlineOpen(true)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       showError(`Could not load symbols: ${msg}`)
@@ -103,21 +106,16 @@
 
   // Keep the Save menu item enabled/disabled in sync with the dirty flag.
   $effect(() => {
-    syncSaveMenuState(sessionDirty).catch(() => {
+    syncSaveMenuState(sessionState.sessionDirty).catch(() => {
       /* menu not yet available during setup */
     })
   })
-
-  // Splitter state for resizable chat panel
-  const CHAT_WIDTH_MIN = 10
-  const CHAT_WIDTH_MAX = 60
-  let chatWidthPct = $state(25)
 
   function onSplitterDown(e: MouseEvent): void {
     e.preventDefault()
     const onMove = (ev: MouseEvent): void => {
       const pct = ((window.innerWidth - ev.clientX) / window.innerWidth) * 100
-      chatWidthPct = Math.min(CHAT_WIDTH_MAX, Math.max(CHAT_WIDTH_MIN, pct))
+      setChatWidthPct(pct)
     }
     const onUp = (): void => {
       window.removeEventListener('mousemove', onMove)
@@ -131,34 +129,23 @@
     const step = e.shiftKey ? 5 : 1
     if (e.key === 'ArrowLeft') {
       e.preventDefault()
-      chatWidthPct = Math.min(CHAT_WIDTH_MAX, chatWidthPct + step)
+      setChatWidthPct(layoutState.chatWidthPct + step)
     } else if (e.key === 'ArrowRight') {
       e.preventDefault()
-      chatWidthPct = Math.max(CHAT_WIDTH_MIN, chatWidthPct - step)
+      setChatWidthPct(layoutState.chatWidthPct - step)
     } else if (e.key === 'Home') {
       e.preventDefault()
-      chatWidthPct = CHAT_WIDTH_MIN
+      setChatWidthPct(CHAT_WIDTH_MIN)
     } else if (e.key === 'End') {
       e.preventDefault()
-      chatWidthPct = CHAT_WIDTH_MAX
+      setChatWidthPct(CHAT_WIDTH_MAX)
     }
   }
 
-  // Session state
+  // Editor component instance (bind:this target — cannot move to a store).
   let editorRef = $state<Editor | null>(null)
-  let editorContent = $state('')
-  let proseText = $state('')
-  let proseHash = $state<string | null>(null)
-  let sessionDirty = $state(false)
-  let proofView = $state<'formal' | 'prose'>('formal')
-  let proseGenerating = $state(false)
-  let renderedProseHtml = $derived(renderContent(proseText))
-  // Goal state panel
-  let goalText = $state('')
-  let goalLineToProofLine = $state<(number | null)[]>([])
-  let goalPanelPct = $state(30)
-  const GOAL_PANEL_MIN = 20
-  const GOAL_PANEL_MAX = 80
+
+  // Goal panel drag state (local UI-only — not persisted).
   let goalDragging = false
   let goalDragStartY = 0
   let goalDragStartPct = 0
@@ -167,13 +154,10 @@
   let recoveryPromptEl = $state<HTMLElement | null>(null)
   let recoveryTriggerEl: Element | null = null
 
-  // Derive the theorem title from prose (preferred) or Lean source (fallback).
-  let theoremTitle: string = $derived(getTheoremTitle(proseText, editorContent))
-
   // Keep the native window title in sync with the theorem title.
   let lastSetTitle = ''
   $effect(() => {
-    const title = theoremTitle
+    const title = sessionState.theoremTitle
     if (title !== lastSetTitle) {
       lastSetTitle = title
       invoke('set_window_title', { title }).catch(() => {
@@ -188,7 +172,7 @@
   // on every keystroke.
   $effect(() => {
     if (editorRef) {
-      const content = untrack(() => editorContent)
+      const content = untrack(() => sessionState.editorContent)
       if (content) {
         // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
         editorRef.setContent(content)
@@ -212,39 +196,8 @@
     }
   })
 
-  // Build the meta object to pass to save commands
-  function buildMeta(): {
-    format_version: number
-    created_at: string
-    saved_at: string
-    cursor_line: number
-    cursor_col: number
-    editor_scroll_top: number
-    chat_width_pct: number
-    proof_view: string
-    goal_panel_pct: number
-    word_wrap: boolean
-  } {
-    return {
-      format_version: 1,
-      created_at: '',
-      saved_at: '',
-      cursor_line: 0,
-      cursor_col: 0,
-      editor_scroll_top: 0,
-      chat_width_pct: chatWidthPct,
-      proof_view: proofView,
-      goal_panel_pct: goalPanelPct,
-      word_wrap: wordWrap,
-    }
-  }
-
   function handleChange(content: string): void {
-    editorContent = content
-    sessionDirty = true
-    invoke('update_document', { content }).catch(() => {
-      /* LSP not yet connected */
-    })
+    setEditorContent(content)
   }
 
   function handleCursorChange(line: number, col: number): void {
@@ -260,7 +213,7 @@
   function onGoalSplitterPointerDown(e: PointerEvent): void {
     goalDragging = true
     goalDragStartY = e.clientY
-    goalDragStartPct = goalPanelPct
+    goalDragStartPct = layoutState.goalPanelPct
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
@@ -271,7 +224,7 @@
     const containerHeight = container.getBoundingClientRect().height
     const deltaPx = goalDragStartY - e.clientY
     const deltaPct = (deltaPx / containerHeight) * 100
-    goalPanelPct = Math.min(GOAL_PANEL_MAX, Math.max(GOAL_PANEL_MIN, goalDragStartPct + deltaPct))
+    setGoalPanelPct(goalDragStartPct + deltaPct)
   }
 
   function onGoalSplitterPointerUp(e: PointerEvent): void {
@@ -283,96 +236,20 @@
     const step = e.shiftKey ? 5 : 1
     if (e.key === 'ArrowUp') {
       e.preventDefault()
-      goalPanelPct = Math.min(GOAL_PANEL_MAX, goalPanelPct + step)
+      setGoalPanelPct(layoutState.goalPanelPct + step)
     } else if (e.key === 'ArrowDown') {
       e.preventDefault()
-      goalPanelPct = Math.max(GOAL_PANEL_MIN, goalPanelPct - step)
+      setGoalPanelPct(layoutState.goalPanelPct - step)
     } else if (e.key === 'Home') {
       e.preventDefault()
-      goalPanelPct = GOAL_PANEL_MIN
+      setGoalPanelPct(GOAL_PANEL_MIN)
     } else if (e.key === 'End') {
       e.preventDefault()
-      goalPanelPct = GOAL_PANEL_MAX
+      setGoalPanelPct(GOAL_PANEL_MAX)
     }
   }
 
-  // Generate prose if it doesn't exist yet (called before saving).
-  async function ensureProse(): Promise<void> {
-    if (proseText || !editorContent.trim()) return
-    proseGenerating = true
-    try {
-      await invoke('generate_prose')
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      showError(`Prose generation failed: ${msg}`)
-    } finally {
-      proseGenerating = false
-    }
-  }
-
-  // Session command wrappers
-  async function newSession(): Promise<void> {
-    await invoke('new_session')
-    sessionDirty = false
-  }
-
-  async function openSession(): Promise<void> {
-    await invoke('open_session', { path: null })
-    sessionDirty = false
-  }
-
-  async function saveSession(): Promise<void> {
-    try {
-      await ensureProse()
-      const suggestedName = theoremTitle !== 'New Theorem' ? titleToFilename(theoremTitle) : null
-      await invoke('save_session', {
-        proofLean: editorContent,
-        proseText: proseText,
-        proseHash: proseHash,
-        meta: buildMeta(),
-        suggestedName,
-      })
-      sessionDirty = false
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      showError(`Save failed: ${msg}`)
-    }
-  }
-
-  async function saveSessionAs(): Promise<void> {
-    try {
-      await ensureProse()
-      const suggestedName = theoremTitle !== 'New Theorem' ? titleToFilename(theoremTitle) : null
-      await invoke('save_session_as', {
-        proofLean: editorContent,
-        proseText: proseText,
-        proseHash: proseHash,
-        meta: buildMeta(),
-        suggestedName,
-      })
-      sessionDirty = false
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      showError(`Save As failed: ${msg}`)
-    }
-  }
-
-  async function autoSave(): Promise<void> {
-    if (!sessionDirty) return
-    try {
-      await invoke('auto_save_session', {
-        proofLean: editorContent,
-        proseText: proseText,
-        proseHash: proseHash,
-        meta: buildMeta(),
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      showError(`Auto-save failed: ${msg}`)
-    }
-  }
-
-  // Recovery flow helpers
+  // Recovery flow helpers — thin wrappers that flip the overlay flag.
   async function restoreAutoSave(): Promise<void> {
     showRecoveryPrompt = false
     // restore_auto_save loads autosave.turn into session state, emits
@@ -395,47 +272,19 @@
     await reopenLastSession()
   }
 
-  async function reopenLastSession(): Promise<void> {
-    const lastPath = await invoke<string | null>('get_last_session').catch(() => null)
-    if (lastPath) {
-      await invoke('open_session', { path: lastPath }).catch(() => {
-        // File may have been moved/deleted since last run — silently ignore.
-      })
-    }
-  }
-
-  // Keyboard shortcut handler — session (N/O/S/Shift+S) + settings (,)
-  function handleKeydown(e: KeyboardEvent): void {
-    const meta = e.metaKey || e.ctrlKey
-    if (!meta) return
-
-    // Cmd/Ctrl+Shift+O — symbol outline command palette
-    if ((e.key === 'o' || e.key === 'O') && e.shiftKey) {
-      e.preventDefault()
-      void openSymbolOutline()
-      return
-    }
-
-    if (e.key === ',') {
-      e.preventDefault()
-      showSettings = true
-    } else if (e.key === 'n' || e.key === 'N') {
-      e.preventDefault()
-      void newSession()
-    } else if (e.key === 'o' || e.key === 'O') {
-      e.preventDefault()
-      void openSession()
-    } else if ((e.key === 's' || e.key === 'S') && e.shiftKey) {
-      e.preventDefault()
-      void saveSessionAs()
-    } else if (e.key === 's' || e.key === 'S') {
-      e.preventDefault()
-      void saveSession()
-    }
-  }
-
   onMount(() => {
-    window.addEventListener('keydown', handleKeydown)
+    const unlistenKeyboard = installKeyboardShortcuts({
+      newSession: () => void newSession(),
+      openSession: () => void openSession(),
+      saveSession: () => void saveSession(),
+      saveSessionAs: () => void saveSessionAs(),
+      openSettings: () => {
+        showSettings = true
+      },
+      openSymbolOutline: () => {
+        void openSymbolOutline()
+      },
+    })
 
     // Track the OS color-scheme preference so "auto" mode can react in real time.
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
@@ -464,45 +313,18 @@
         /* no models available */
       })
 
-    // Register listeners BEFORE calling start_lsp — same ordering constraint
-    // as in the Rust/WASM version. Tauri events can arrive immediately after
-    // start_lsp returns; any listener registered after would miss early events.
-    const diagPromise = listen<DiagnosticInfo[]>('lsp-diagnostics', (diags) => {
-      diagnostics = diags
-    })
-    const tokensPromise = listen<SemanticToken[]>('lsp-semantic-tokens', (tokens) => {
-      semanticTokens = tokens
-    })
-    const progressPromise = listen<FileProgressRange[]>('lsp-file-progress', (ranges) => {
-      fileProgress = ranges
-    })
-    const goalStatePromise = listen<{ full: string; per_line: string[] }>(
-      'goal-state-updated',
-      ({ full, per_line }) => {
-        goalText = full
-        goalLineToProofLine = buildGoalLineMap(full, per_line)
+    // Register ALL Tauri listeners BEFORE calling start_lsp — any listener
+    // registered after start_lsp would miss events emitted immediately on
+    // startup. Each setup function awaits its own Promise.all internally;
+    // the outer Promise.all below then awaits all three before startLsp().
+    const setupDeps: SessionSetupDeps = {
+      setEditorText: (content) => {
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
+        editorRef?.setContent(content)
       },
-    )
-
-    // Listen for prose-updated events from other components
-    const prosePromise = listen<{ text: string; hash: string | null }>('prose-updated', (data) => {
-      proseText = data.text
-      proseHash = data.hash
-      sessionDirty = true
-    })
-
-    // Listen for session-loaded events (open/new session)
-    const sessionPromise = listen<SessionState>('session-loaded', (session) => {
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
-      editorRef?.setContent(session.proof_lean)
-      proseText = session.prose.text
-      proseHash = session.prose.tactic_state_hash
-      chatWidthPct = session.meta.chat_width_pct || 25
-      goalPanelPct = session.meta.goal_panel_pct ?? 30
-      proofView = session.meta.proof_view === 'prose' ? 'prose' : 'formal'
-      wordWrap = session.meta.word_wrap ?? false
-      sessionDirty = false
-    })
+    }
+    const lspPromise = setupLspListeners()
+    const sessionPromise = setupSessionListeners(setupDeps)
 
     // Listen for native menu events from the Rust backend
     const menuPromise = listen<string>('menu-event', (id) => {
@@ -518,31 +340,11 @@
       })
     })
 
-    void Promise.all([
-      diagPromise,
-      tokensPromise,
-      progressPromise,
-      goalStatePromise,
-      prosePromise,
-      sessionPromise,
-      menuPromise,
-    ]).then(
-      ([
-        unlistenDiag,
-        unlistenTokens,
-        unlistenProgress,
-        unlistenGoalState,
-        unlistenProse,
-        unlistenSession,
-        unlistenMenu,
-      ]) => {
+    void Promise.all([lspPromise, sessionPromise, menuPromise]).then(
+      ([unlistenLsp, unlistenSession, unlistenMenu]) => {
         void startLsp()
         return () => {
-          unlistenDiag()
-          unlistenTokens()
-          unlistenProgress()
-          unlistenGoalState()
-          unlistenProse()
+          unlistenLsp()
           unlistenSession()
           unlistenMenu()
         }
@@ -556,7 +358,7 @@
 
     return () => {
       clearInterval(autoSaveTimer)
-      window.removeEventListener('keydown', handleKeydown)
+      unlistenKeyboard()
       mql.removeEventListener('change', onSystemChange)
     }
   })
@@ -703,45 +505,46 @@
         <div class="flex items-center gap-2">
           <div
             class="w-2 h-2 rounded-full bg-accent transition-opacity duration-200"
-            class:opacity-80={sessionDirty}
-            class:opacity-0={!sessionDirty}
+            class:opacity-80={sessionState.sessionDirty}
+            class:opacity-0={!sessionState.sessionDirty}
           ></div>
           <span
             class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
           >
-            {proofView === 'formal' ? 'Formal Proof' : 'Prose Proof'}
+            {sessionState.proofView === 'formal' ? 'Formal Proof' : 'Prose Proof'}
           </span>
         </div>
         <ProofViewToggle
-          view={proofView}
+          view={sessionState.proofView}
           onToggle={() => {
-            proofView = proofView === 'formal' ? 'prose' : 'formal'
-            if (proofView === 'prose' && !proseText && editorContent) {
-              proseGenerating = true
+            const nextView = sessionState.proofView === 'formal' ? 'prose' : 'formal'
+            setProofView(nextView)
+            if (nextView === 'prose' && !sessionState.proseText && sessionState.editorContent) {
+              setProseGenerating(true)
               invoke('generate_prose')
                 .catch((err: unknown) => {
                   const msg = err instanceof Error ? err.message : String(err)
                   showError(`Prose generation failed: ${msg}`)
                 })
                 .finally(() => {
-                  proseGenerating = false
+                  setProseGenerating(false)
                 })
             }
           }}
         />
       </div>
       <div class="flex-1 min-h-0">
-        {#if proofView === 'formal'}
+        {#if sessionState.proofView === 'formal'}
           <div class="flex flex-col h-full">
-            <div class="min-h-0" style="flex: {100 - goalPanelPct}">
+            <div class="min-h-0" style="flex: {100 - layoutState.goalPanelPct}">
               <Editor
                 bind:this={editorRef}
                 initialTheme={resolved}
                 theme={resolved}
-                {diagnostics}
-                {semanticTokens}
-                {fileProgress}
-                {wordWrap}
+                diagnostics={lspState.diagnostics}
+                semanticTokens={lspState.semanticTokens}
+                fileProgress={lspState.fileProgress}
+                wordWrap={layoutState.wordWrap}
                 currentUri={() => PROOF_URI}
                 onchange={handleChange}
                 oncursorchange={handleCursorChange}
@@ -757,7 +560,7 @@
               role="separator"
               aria-orientation="horizontal"
               aria-label="Resize goal panel"
-              aria-valuenow={goalPanelPct}
+              aria-valuenow={layoutState.goalPanelPct}
               aria-valuemin={GOAL_PANEL_MIN}
               aria-valuemax={GOAL_PANEL_MAX}
               tabindex="0"
@@ -777,14 +580,18 @@
               </div>
             </div>
 
-            <div class="min-h-0" style="flex: {goalPanelPct}">
-              <GoalPanel {goalText} {goalLineToProofLine} onHighlightLine={handleHighlightLine} />
+            <div class="min-h-0" style="flex: {layoutState.goalPanelPct}">
+              <GoalPanel
+                goalText={lspState.goalText}
+                goalLineToProofLine={lspState.goalLineToProofLine}
+                onHighlightLine={handleHighlightLine}
+              />
             </div>
           </div>
         {:else}
           <ProsePanel
-            proseHtml={renderedProseHtml}
-            generating={proseGenerating}
+            proseHtml={sessionState.renderedProseHtml}
+            generating={sessionState.proseGenerating}
             fontSize={settings.proseFontSize}
           />
         {/if}
@@ -798,11 +605,11 @@
         <button
           type="button"
           class="px-2 py-0.5 rounded hover:bg-bg-tertiary hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-          aria-pressed={wordWrap}
+          aria-pressed={layoutState.wordWrap}
           onclick={toggleWordWrap}
           data-testid="word-wrap-toggle"
         >
-          Wrap: {wordWrap ? 'On' : 'Off'}
+          Wrap: {layoutState.wordWrap ? 'On' : 'Off'}
         </button>
       </div>
     </div>
@@ -814,7 +621,7 @@
       role="separator"
       aria-orientation="vertical"
       aria-label="Resize chat panel"
-      aria-valuenow={chatWidthPct}
+      aria-valuenow={layoutState.chatWidthPct}
       aria-valuemin={CHAT_WIDTH_MIN}
       aria-valuemax={CHAT_WIDTH_MAX}
       tabindex="0"
@@ -832,11 +639,11 @@
     <!-- Chat panel column (resizable width) -->
     <div
       class="flex flex-col flex-shrink-0 h-full border-l border-border"
-      style="width: {chatWidthPct}%"
+      style="width: {layoutState.chatWidthPct}%"
     >
       <ChatPanel
         theme={resolved}
-        {sessionDirty}
+        sessionDirty={sessionState.sessionDirty}
         fontSize={settings.chatFontSize}
         onToggleTheme={() => {
           const next = toggleTheme(resolved)
@@ -854,12 +661,12 @@
     <SettingsModal onClose={() => (showSettings = false)} />
   {/if}
 
-  {#if outlineOpen}
+  {#if layoutState.outlineOpen}
     <SymbolOutline
-      symbols={outlineSymbols}
+      symbols={lspState.outlineSymbols}
       onJump={jumpToSymbol}
       onClose={() => {
-        outlineOpen = false
+        setOutlineOpen(false)
       }}
     />
   {/if}
