@@ -1,49 +1,62 @@
 /**
- * Debounced goal state fetcher.
+ * Debounced, document-driven goal state fetcher.
  *
- * Wraps the Tauri `get_goal_state` command with 300ms debouncing and
- * deduplication so rapid cursor movements produce at most one LSP request.
+ * On every `update(content)` the fetcher restarts a 300 ms timer. When the
+ * timer fires it calls two Tauri commands in parallel:
+ *
+ * - `get_full_proof_goal_state` — the goal state after the whole proof
+ *   (what the Goal State panel displays, independent of cursor position).
+ * - `get_per_line_goal_states`  — the rendered goal state at the end of
+ *   every line. Used to map panel lines back to proof lines.
+ *
+ * Back-to-back `update` calls with the same content are deduplicated.
  */
 
 import { invoke } from './tauri'
 
 const DEBOUNCE_MS = 300
 
+export interface GoalStateResult {
+  full: string
+  perLine: string[]
+}
+
 export interface GoalStateFetcher {
-  /** Call on every cursor move — internally debounces. */
-  update(line: number, col: number): void
+  /** Call on every document change — internally debounces. */
+  update(content: string): void
   /** Cancel any pending request. */
   destroy(): void
 }
 
 /**
- * Create a goal state fetcher that debounces LSP requests.
+ * Create a document-driven goal state fetcher.
  *
- * @param onResult Called with the rendered goal text plus the (line, col) that
- *   produced it. On error the text is empty.
+ * @param onResult Called once per debounced fire with the latest goals. On
+ *   error `full` is an empty string and `perLine` is an empty array.
  */
 export function createGoalStateFetcher(
-  onResult: (goalText: string, line: number, col: number) => void,
+  onResult: (result: GoalStateResult) => void,
 ): GoalStateFetcher {
   let timeoutId: ReturnType<typeof setTimeout> | undefined
-  let lastLine = -1
-  let lastCol = -1
+  let lastContent: string | null = null
 
-  function update(line: number, col: number): void {
-    if (line === lastLine && col === lastCol) return
-    lastLine = line
-    lastCol = col
+  function update(content: string): void {
+    if (content === lastContent) return
+    lastContent = content
 
     if (timeoutId !== undefined) clearTimeout(timeoutId)
 
     timeoutId = setTimeout(() => {
       timeoutId = undefined
-      invoke<string>('get_goal_state', { line, col })
-        .then((text) => {
-          onResult(text, line, col)
+      Promise.all([
+        invoke<string>('get_full_proof_goal_state'),
+        invoke<string[]>('get_per_line_goal_states'),
+      ])
+        .then(([full, perLine]) => {
+          onResult({ full, perLine })
         })
         .catch(() => {
-          onResult('', line, col)
+          onResult({ full: '', perLine: [] })
         })
     }, DEBOUNCE_MS)
   }

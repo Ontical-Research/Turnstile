@@ -18,6 +18,7 @@
   import { renderContent } from './lib/renderContent'
   import { createGoalStateFetcher } from './lib/goalState'
   import type { GoalStateFetcher } from './lib/goalState'
+  import { buildGoalLineMap } from './lib/goalLineMap'
   import { theme, systemTheme, toggleTheme, resolveTheme } from './lib/theme'
   import type { ResolvedTheme } from './lib/theme'
   import {
@@ -106,7 +107,7 @@
   let renderedProseHtml = $derived(renderContent(proseText))
   // Goal state panel
   let goalText = $state('')
-  let goalCursorLine = $state(0)
+  let goalLineToProofLine = $state<(number | null)[]>([])
   let goalPanelPct = $state(30)
   const GOAL_PANEL_MIN = 20
   const GOAL_PANEL_MAX = 80
@@ -196,14 +197,15 @@
     invoke('update_document', { content }).catch(() => {
       /* LSP not yet connected */
     })
+    refreshGoalState(content)
   }
 
-  function handleCursorChange(line: number, col: number): void {
-    goalFetcher ??= createGoalStateFetcher((text, fetchLine) => {
-      goalText = text
-      goalCursorLine = fetchLine + 1 // 0-indexed to 1-indexed
+  function refreshGoalState(content: string): void {
+    goalFetcher ??= createGoalStateFetcher(({ full, perLine }) => {
+      goalText = full
+      goalLineToProofLine = buildGoalLineMap(full, perLine)
     })
-    goalFetcher.update(line, col)
+    goalFetcher.update(content)
   }
 
   function handleHighlightLine(line: number | null): void {
@@ -673,7 +675,6 @@
                 {semanticTokens}
                 {fileProgress}
                 onchange={handleChange}
-                oncursorchange={handleCursorChange}
               />
             </div>
 
@@ -705,11 +706,7 @@
             </div>
 
             <div class="min-h-0" style="flex: {goalPanelPct}">
-              <GoalPanel
-                {goalText}
-                cursorLine={goalCursorLine}
-                onHighlightLine={handleHighlightLine}
-              />
+              <GoalPanel {goalText} {goalLineToProofLine} onHighlightLine={handleHighlightLine} />
             </div>
           </div>
         {:else}
