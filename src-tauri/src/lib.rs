@@ -7,8 +7,9 @@
 //! Frontend change → `update_document` → `textDocument/didChange` → LSP emits
 //! `textDocument/publishDiagnostics` → `lsp-diagnostics` Tauri event → frontend.
 //!
-//! **Cursor → goal state:**
-//! Cursor move → `get_goal_state` → `$/lean/plainGoal` (awaited) → response
+//! **Document → goal state:**
+//! Document change → `get_full_proof_goal_state` and
+//! `get_per_line_goal_states` → `$/lean/plainGoal` (awaited) → response
 //! `{ "rendered": "..." }` → frontend goal panel.
 
 pub mod chat;
@@ -363,6 +364,98 @@ async fn get_goal_state(app: AppHandle, line: u32, col: u32) -> Result<String, S
     Ok(rendered)
 }
 
+/// Return the goal state at the end of the current document.
+///
+/// This is the "whole proof" goal state — what Lean reports after feeding it
+/// the entire Formal Proof. Independent of cursor position.
+#[tauri::command]
+#[allow(clippy::significant_drop_tightening)]
+async fn get_full_proof_goal_state(app: AppHandle) -> Result<String, String> {
+    let state = app.state::<AppState>();
+    let source = state.current_source.lock().await.clone();
+    let (line, col) = end_of_document_position(&source);
+
+    let lock = state.lsp_client.lock().await;
+    let Some(client) = lock.as_ref() else {
+        return Err("LSP not connected".to_string());
+    };
+
+    let doc_uri = state.doc_uri();
+    let result = client
+        .send_request_await(
+            "$/lean/plainGoal",
+            json!({
+                "textDocument": { "uri": doc_uri },
+                "position": { "line": line, "character": col },
+            }),
+        )
+        .await?;
+
+    let rendered = result
+        .get("rendered")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    Ok(rendered)
+}
+
+/// Return the rendered goal state at the end of every line in the document.
+///
+/// Returns a `Vec<String>` with one entry per line (same length as the number
+/// of lines in the source). Requests are issued sequentially to avoid
+/// hammering the LSP.
+#[tauri::command]
+#[allow(clippy::significant_drop_tightening)]
+async fn get_per_line_goal_states(app: AppHandle) -> Result<Vec<String>, String> {
+    let state = app.state::<AppState>();
+    let source = state.current_source.lock().await.clone();
+
+    let lock = state.lsp_client.lock().await;
+    let Some(client) = lock.as_ref() else {
+        return Err("LSP not connected".to_string());
+    };
+    let doc_uri = state.doc_uri();
+
+    let mut results: Vec<String> = Vec::new();
+    for (idx, line_text) in source.split('\n').enumerate() {
+        let line = u32::try_from(idx).map_err(|e| e.to_string())?;
+        let col = u32::try_from(line_text.chars().count()).map_err(|e| e.to_string())?;
+        let result = client
+            .send_request_await(
+                "$/lean/plainGoal",
+                json!({
+                    "textDocument": { "uri": doc_uri },
+                    "position": { "line": line, "character": col },
+                }),
+            )
+            .await
+            .unwrap_or(serde_json::Value::Null);
+        let rendered = result
+            .get("rendered")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        results.push(rendered);
+    }
+
+    Ok(results)
+}
+
+/// Compute the (line, character) position at the end of the document.
+///
+/// `line` is 0-indexed; `character` is the number of characters (UTF-16 code
+/// units as counted by `chars().count()` — good enough for Lean's LSP which
+/// accepts either as long as it's past the last character).
+fn end_of_document_position(source: &str) -> (u32, u32) {
+    let last_line_idx = source.split('\n').count().saturating_sub(1);
+    let last_line = source.split('\n').next_back().unwrap_or("");
+    let col = last_line.chars().count();
+    (
+        u32::try_from(last_line_idx).unwrap_or(u32::MAX),
+        u32::try_from(col).unwrap_or(u32::MAX),
+    )
+}
+
 #[tauri::command]
 #[allow(clippy::significant_drop_tightening)] // lock must be held while awaiting on client
 async fn get_completions(
@@ -566,6 +659,8 @@ pub fn run() {
             start_lsp,
             update_document,
             get_goal_state,
+            get_full_proof_goal_state,
+            get_per_line_goal_states,
             get_completions,
             chat::send_chat_message,
             chat::get_chat_state,
@@ -595,6 +690,8 @@ pub fn run() {
 mod tests {
     use std::sync::atomic::{AtomicI64, Ordering};
 
+    use super::end_of_document_position;
+
     #[test]
     fn doc_version_strictly_increasing_after_did_open() {
         let doc_version = AtomicI64::new(2);
@@ -607,5 +704,15 @@ mod tests {
         assert!(v1 > did_open_version);
         assert!(v2 > v1);
         assert!(v3 > v2);
+    }
+
+    #[test]
+    fn end_of_document_position_basic() {
+        assert_eq!(end_of_document_position(""), (0, 0));
+        assert_eq!(end_of_document_position("abc"), (0, 3));
+        assert_eq!(end_of_document_position("abc\n"), (1, 0));
+        assert_eq!(end_of_document_position("abc\ndef"), (1, 3));
+        assert_eq!(end_of_document_position("abc\ndef\n"), (2, 0));
+        assert_eq!(end_of_document_position("abc\ndef\nghi"), (2, 3));
     }
 }
