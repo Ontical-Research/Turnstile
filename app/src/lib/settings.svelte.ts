@@ -200,7 +200,12 @@ type AnyRecord = Record<string, any>
 
 class SettingsDraft {
   #keys: SettingsKey[]
-  #committed: SettingsData
+  // `committed` must be reactive: the `dirty` getter compares draft fields
+  // against it, and after a successful apply() we reset it so the Apply
+  // button disables. Plain private fields are not tracked by Svelte 5, so
+  // reassigning a plain field would leave `dirty` stale until another
+  // tracked input changes.
+  committed = $state<SettingsData>({ ...DEFAULT_SETTINGS })
   #afterApply: ((values: SettingsData) => Promise<void>) | null
 
   editorFontSize = $state(DEFAULT_SETTINGS.editorFontSize)
@@ -214,14 +219,14 @@ class SettingsDraft {
     this.#keys = keys
     this.#afterApply = options?.afterApply ?? null
     const snapshot = currentValues()
-    this.#committed = { ...snapshot }
+    this.committed = { ...snapshot }
     for (const key of keys) {
       ;(this as AnyRecord)[key] = snapshot[key]
     }
   }
 
   get dirty(): boolean {
-    return this.#keys.some((key) => (this as AnyRecord)[key] !== this.#committed[key])
+    return this.#keys.some((key) => (this as AnyRecord)[key] !== this.committed[key])
   }
 
   set(key: SettingsKey, value: number | string | null): void {
@@ -236,7 +241,7 @@ class SettingsDraft {
 
   discard(): void {
     for (const key of this.#keys) {
-      ;(this as AnyRecord)[key] = this.#committed[key]
+      ;(this as AnyRecord)[key] = this.committed[key]
     }
   }
 
@@ -254,7 +259,7 @@ class SettingsDraft {
       if (this.#afterApply) {
         await this.#afterApply(merged)
       }
-      this.#committed = { ...merged }
+      this.committed = { ...merged }
     } catch (err) {
       applySettings(previous)
       throw err

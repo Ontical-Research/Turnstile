@@ -52,6 +52,16 @@
     document.documentElement.classList.toggle('light', resolved === 'light')
   })
 
+  // Mirror the editor font size into a CSS custom property read by `.cm-editor`
+  // in app.css. A `$effect` keeps it in sync whenever the setting changes,
+  // so changes applied from the Settings dialog take effect immediately.
+  $effect(() => {
+    document.documentElement.style.setProperty(
+      '--editor-font-size',
+      `${String(settings.editorFontSize)}px`,
+    )
+  })
+
   // Keep the Save menu item enabled/disabled in sync with the dirty flag.
   $effect(() => {
     syncSaveMenuState(sessionDirty).catch(() => {
@@ -752,6 +762,7 @@
       <ChatPanel
         theme={resolved}
         {sessionDirty}
+        fontSize={settings.chatFontSize}
         onToggleTheme={() => {
           const next = toggleTheme(resolved)
           theme.set(next)
