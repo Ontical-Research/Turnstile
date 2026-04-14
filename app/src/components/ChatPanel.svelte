@@ -25,10 +25,11 @@
   interface Props {
     theme: ResolvedTheme
     sessionDirty: boolean
+    fontSize: number
     onToggleTheme: () => void
   }
 
-  let { theme, sessionDirty, onToggleTheme }: Props = $props()
+  let { theme, sessionDirty, fontSize, onToggleTheme }: Props = $props()
 
   // ---------------------------------------------------------------------------
   // State
@@ -296,7 +297,10 @@
   }
 </script>
 
-<div class="chat-panel flex flex-col h-full bg-bg-primary text-text-primary">
+<div
+  class="chat-panel flex flex-col h-full bg-bg-primary text-text-primary"
+  style="font-size: {fontSize}px"
+>
   <!-- Panel header -->
   <div
     class="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary shrink-0"
