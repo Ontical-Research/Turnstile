@@ -106,6 +106,7 @@ const leanAbbrevExtension = EditorView.updateListener.of((update: ViewUpdate) =>
 
 const setSemanticTokensEffect = StateEffect.define<SemanticToken[]>()
 const setDiagnosticsEffect = StateEffect.define<DiagnosticInfo[]>()
+const setGoalLineEffect = StateEffect.define<number[]>()
 
 // ---------------------------------------------------------------------------
 // Semantic token highlighting — StateField<DecorationSet>
@@ -254,6 +255,48 @@ const diagnosticGutter = gutter({
 })
 
 // ---------------------------------------------------------------------------
+// Goal line decoration — underline on editor lines linked from goal panel
+// ---------------------------------------------------------------------------
+
+const goalLineDeco = Decoration.line({ class: 'cm-goal-line' })
+
+const goalLineField = StateField.define<DecorationSet>({
+  create() {
+    return Decoration.none
+  },
+  update(decorations, tr) {
+    for (const effect of tr.effects) {
+      if (effect.is(setGoalLineEffect)) {
+        const lines = effect.value
+        if (lines.length === 0) return Decoration.none
+
+        const lineDecos: Range<Decoration>[] = []
+        const doc = tr.state.doc
+
+        for (const lineNum of lines) {
+          if (lineNum >= 1 && lineNum <= doc.lines) {
+            lineDecos.push(goalLineDeco.range(doc.line(lineNum).from))
+          }
+        }
+
+        lineDecos.sort((a, b) => a.from - b.from)
+        let prevFrom = -1
+        const unique = lineDecos.filter((d) => {
+          const dominated = d.from === prevFrom
+          prevFrom = d.from
+          return !dominated
+        })
+        return RangeSet.of(unique)
+      }
+    }
+    return decorations.map(tr.changes)
+  },
+  provide(field) {
+    return EditorView.decorations.from(field)
+  },
+})
+
+// ---------------------------------------------------------------------------
 // LSP completion source
 // ---------------------------------------------------------------------------
 
@@ -354,6 +397,7 @@ interface EditorHandle {
   applySemanticTokens(tokens: SemanticToken[]): void
   applyDiagnostics(diagnostics: DiagnosticInfo[]): void
   applyFileProgress(ranges: FileProgressRange[]): void
+  setGoalLines(lines: number[]): void
   setContent(text: string): void
   setTheme(theme: ResolvedTheme): void
   destroy(): void
@@ -363,6 +407,7 @@ export function mountEditor(
   container: HTMLElement,
   initialTheme: ResolvedTheme,
   onChange: (content: string) => void,
+  onCursorChange?: (line: number, col: number) => void,
 ): EditorHandle {
   const themeCompartment = new Compartment()
   const updateListener = EditorView.updateListener.of((update: ViewUpdate) => {
@@ -370,6 +415,17 @@ export function mountEditor(
       onChange(update.state.doc.toString())
     }
   })
+
+  const cursorListener = onCursorChange
+    ? EditorView.updateListener.of((update: ViewUpdate) => {
+        if (update.selectionSet || update.docChanged) {
+          const head = update.state.selection.main.head
+          const line = update.state.doc.lineAt(head)
+          // LSP uses 0-indexed line and column
+          onCursorChange(line.number - 1, head - line.from)
+        }
+      })
+    : []
 
   const view = new EditorView({
     state: EditorState.create({
@@ -412,7 +468,9 @@ export function mountEditor(
         tooltips({ parent: document.body }),
         diagnosticGutter,
         fileProgressExtension(),
+        goalLineField,
         updateListener,
+        cursorListener,
         baseTheme,
         themeCompartment.of(themeExtension(initialTheme)),
       ],
@@ -429,6 +487,9 @@ export function mountEditor(
     },
     applyFileProgress(ranges) {
       view.dispatch({ effects: setFileProgressEffect.of(ranges) })
+    },
+    setGoalLines(lines: number[]) {
+      view.dispatch({ effects: setGoalLineEffect.of(lines) })
     },
     setContent(text: string) {
       view.dispatch({
