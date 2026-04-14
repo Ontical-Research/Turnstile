@@ -445,7 +445,12 @@ struct GoalStatePayload {
 /// empty-`fileProgress` frames Lean emits as elaboration settles, and
 /// discards stale results that would overwrite newer ones.
 fn spawn_goal_state_refresh(app: AppHandle, seq: u64) {
-    tokio::spawn(async move {
+    // Use Tauri's global async runtime rather than `tokio::spawn`: this
+    // function is invoked from the plain `std::thread` that runs the LSP
+    // reader loop, which has no Tokio runtime attached to thread-local
+    // storage. `tauri::async_runtime::spawn` dispatches via a stored handle
+    // and so works from any thread.
+    tauri::async_runtime::spawn(async move {
         // Debounce: coalesce bursts of empty-progress frames.
         tokio::time::sleep(std::time::Duration::from_millis(150)).await;
 
