@@ -262,6 +262,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Restore Rust test artifacts
         uses: actions/cache/restore@v4
@@ -278,12 +283,94 @@ jobs:
           find . -not -path '*/target/*' \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' -o -name 'build.rs' \) -exec touch -t "$ts" {} +
           touch -t "$ts" .cargo/config.toml
 
-      # The integration tests use skip_if_no_project! — they skip gracefully
-      # when no Lean project is present (TURNSTILE_PROJECT_PATH unset and the
-      # default app-data path absent). Running without env vars exercises the
-      # skip path and confirms the Rust code compiles and links correctly.
-      - name: cargo test (Lean LSP integration tests)
-        run: cargo test --test lean_lsp_integration
+      # ── Lean toolchain setup ──────────────────────────────────────────
+      - name: Set Lean project path
+        run: echo "LEAN_PROJECT=$HOME/lean-ci-project" >> "$GITHUB_ENV"
+
+      - name: Extract Lean toolchain and Mathlib versions
+        id: lean-versions
+        run: |
+          LEAN_TOOLCHAIN=$(grep 'const LEAN_TOOLCHAIN' src-tauri/src/setup.rs | sed 's/.*"\(.*\)".*/\1/')
+          MATHLIB_REV=$(grep 'const MATHLIB_REV' src-tauri/src/setup.rs | sed 's/.*"\(.*\)".*/\1/')
+          echo "lean-toolchain=$LEAN_TOOLCHAIN" >> "$GITHUB_OUTPUT"
+          echo "mathlib-rev=$MATHLIB_REV" >> "$GITHUB_OUTPUT"
+          echo "Lean toolchain: $LEAN_TOOLCHAIN"
+          echo "Mathlib rev: $MATHLIB_REV"
+
+      - name: Cache elan toolchain
+        id: cache-elan
+        uses: actions/cache@v4
+        with:
+          path: ~/.elan
+          key: elan-${{ runner.os }}-${{ steps.lean-versions.outputs.lean-toolchain }}
+
+      - name: Install elan
+        if: steps.cache-elan.outputs.cache-hit != 'true'
+        run: curl -sSf https://elan.lean-lang.org/elan-init.sh | sh -s -- --no-modify-path -y
+
+      - name: Add elan to PATH
+        run: echo "$HOME/.elan/bin" >> "$GITHUB_PATH"
+
+      - name: Cache Lean project (Lake packages + Mathlib oleans)
+        id: cache-lean-project
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LEAN_PROJECT }}/.lake
+          key: lean-project-${{ runner.os }}-${{ steps.lean-versions.outputs.mathlib-rev }}
+
+      - name: Create Lean project
+        run: |
+          proj="$LEAN_PROJECT"
+          mkdir -p "$proj"
+          echo '${{ steps.lean-versions.outputs.lean-toolchain }}' > "$proj/lean-toolchain"
+          printf '%s\n' \
+            'name = "turnstile-scratch"' \
+            'version = "0.1.0"' \
+            '' \
+            '[[require]]' \
+            'name = "mathlib"' \
+            'scope = "leanprover-community"' \
+            'rev = "${{ steps.lean-versions.outputs.mathlib-rev }}"' \
+            '' \
+            '[[lean_lib]]' \
+            'name = "Proof"' \
+            > "$proj/lakefile.toml"
+          printf '%s\n' \
+            'import Mathlib' \
+            '' \
+            '-- Write Lean 4 + Mathlib proofs here.' \
+            > "$proj/Proof.lean"
+
+      - name: Fetch Mathlib (lake update)
+        if: steps.cache-lean-project.outputs.cache-hit != 'true'
+        run: cd "$LEAN_PROJECT" && lake update
+
+      - name: Download Mathlib build cache
+        if: steps.cache-lean-project.outputs.cache-hit != 'true'
+        run: cd "$LEAN_PROJECT" && lake exe cache get
+
+      - name: Verify Lean setup
+        run: |
+          lean --version
+          lake --version
+          test -d "$LEAN_PROJECT/.lake/packages/mathlib"
+
+      # ── Run integration tests with coverage ───────────────────────────
+      - name: cargo llvm-cov (Lean LSP integration tests)
+        run: cargo llvm-cov --test lean_lsp_integration --lcov --output-path lcov-integration.info
+        env:
+          TURNSTILE_PROJECT_PATH: ${{ env.LEAN_PROJECT }}
+
+      - name: Normalize integration LCOV paths to repo-relative
+        run: sed -i '' "s|SF:${GITHUB_WORKSPACE}/||g" lcov-integration.info
+
+      - name: Upload integration coverage to Codecov
+        if: always()
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-integration.info
+          flags: rust
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   # ── Build ────────────────────────────────────────────────────────────
   # Only produce the full app bundle on pushes to main.
