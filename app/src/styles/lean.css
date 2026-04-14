@@ -107,8 +107,24 @@
 }
 
 /* Lean elaboration progress — lines currently being processed */
+@keyframes leanProcessingPulse {
+  from {
+    background-color: transparent;
+  }
+  to {
+    background-color: var(--progress-bg);
+  }
+}
+
 .cm-lean-processing {
-  background-color: var(--progress-bg);
+  animation: leanProcessingPulse 2.5s ease-in-out infinite alternate;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cm-lean-processing {
+    animation: none;
+    background-color: var(--progress-bg);
+  }
 }
 
 /* CodeMirror 6 full-screen editor */
