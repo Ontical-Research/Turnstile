@@ -43,6 +43,9 @@ pub struct Meta {
     /// Which proof view was active: `"formal"` or `"prose"`. Absent in older files.
     #[serde(default)]
     pub proof_view: Option<String>,
+    /// Goal panel height as a percentage of the editor column. Absent in older files.
+    #[serde(default)]
+    pub goal_panel_pct: Option<f64>,
 }
 
 /// Prose content with a tactic state hash for staleness detection.
@@ -271,6 +274,7 @@ mod tests {
                 editor_scroll_top: 120.5,
                 chat_width_pct: 40.0,
                 proof_view: None,
+                goal_panel_pct: None,
             },
             proof_lean: "theorem foo : True := by\n  trivial\n".to_string(),
             prose: ProseData {

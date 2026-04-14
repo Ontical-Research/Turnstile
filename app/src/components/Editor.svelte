@@ -11,6 +11,7 @@
     semanticTokens?: SemanticToken[] | null
     fileProgress?: FileProgressRange[] | null
     onchange: (content: string) => void
+    oncursorchange?: (line: number, col: number) => void
   }
 
   let {
@@ -20,6 +21,7 @@
     semanticTokens = null,
     fileProgress = null,
     onchange,
+    oncursorchange,
   }: Props = $props()
 
   let container: HTMLDivElement
@@ -27,6 +29,10 @@
 
   export function setContent(text: string): void {
     handle?.setContent(text)
+  }
+
+  export function setGoalLines(lines: number[]): void {
+    handle?.setGoalLines(lines)
   }
 
   $effect(() => {
@@ -46,7 +52,7 @@
   })
 
   onMount(() => {
-    handle = mountEditor(container, initialTheme, onchange)
+    handle = mountEditor(container, initialTheme, onchange, oncursorchange)
   })
 
   onDestroy(() => {

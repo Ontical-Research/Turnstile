@@ -14,7 +14,10 @@
   import SettingsModal from './components/SettingsModal.svelte'
   import ProofViewToggle from './components/ProofViewToggle.svelte'
   import ProsePanel from './components/ProsePanel.svelte'
+  import GoalPanel from './components/GoalPanel.svelte'
   import { renderContent } from './lib/renderContent'
+  import { createGoalStateFetcher } from './lib/goalState'
+  import type { GoalStateFetcher } from './lib/goalState'
   import { theme, systemTheme, toggleTheme, resolveTheme } from './lib/theme'
   import type { ResolvedTheme } from './lib/theme'
   import {
@@ -101,6 +104,17 @@
   let proofView = $state<'formal' | 'prose'>('formal')
   let proseGenerating = $state(false)
   let renderedProseHtml = $derived(renderContent(proseText))
+  // Goal state panel
+  let goalText = $state('')
+  let goalCursorLine = $state(0)
+  let goalPanelPct = $state(30)
+  const GOAL_PANEL_MIN = 20
+  const GOAL_PANEL_MAX = 80
+  let goalFetcher: GoalStateFetcher | null = null
+  let goalDragging = false
+  let goalDragStartY = 0
+  let goalDragStartPct = 0
+
   let showRecoveryPrompt = $state(false)
   let autoSavePath = $state<string | null>(null)
   let recoveryPromptEl = $state<HTMLElement | null>(null)
@@ -161,6 +175,7 @@
     editor_scroll_top: number
     chat_width_pct: number
     proof_view: string
+    goal_panel_pct: number
   } {
     return {
       format_version: 1,
@@ -171,6 +186,7 @@
       editor_scroll_top: 0,
       chat_width_pct: chatWidthPct,
       proof_view: proofView,
+      goal_panel_pct: goalPanelPct,
     }
   }
 
@@ -180,6 +196,58 @@
     invoke('update_document', { content }).catch(() => {
       /* LSP not yet connected */
     })
+  }
+
+  function handleCursorChange(line: number, col: number): void {
+    goalFetcher ??= createGoalStateFetcher((text, fetchLine) => {
+      goalText = text
+      goalCursorLine = fetchLine + 1 // 0-indexed to 1-indexed
+    })
+    goalFetcher.update(line, col)
+  }
+
+  function handleHighlightLine(line: number | null): void {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
+    editorRef?.setGoalLines(line !== null ? [line] : [])
+  }
+
+  function onGoalSplitterPointerDown(e: PointerEvent): void {
+    goalDragging = true
+    goalDragStartY = e.clientY
+    goalDragStartPct = goalPanelPct
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+  }
+
+  function onGoalSplitterPointerMove(e: PointerEvent): void {
+    if (!goalDragging) return
+    const container = (e.currentTarget as HTMLElement).parentElement
+    if (!container) return
+    const containerHeight = container.getBoundingClientRect().height
+    const deltaPx = goalDragStartY - e.clientY
+    const deltaPct = (deltaPx / containerHeight) * 100
+    goalPanelPct = Math.min(GOAL_PANEL_MAX, Math.max(GOAL_PANEL_MIN, goalDragStartPct + deltaPct))
+  }
+
+  function onGoalSplitterPointerUp(e: PointerEvent): void {
+    goalDragging = false
+    ;(e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId)
+  }
+
+  function onGoalSplitterKeydown(e: KeyboardEvent): void {
+    const step = e.shiftKey ? 5 : 1
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      goalPanelPct = Math.min(GOAL_PANEL_MAX, goalPanelPct + step)
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      goalPanelPct = Math.max(GOAL_PANEL_MIN, goalPanelPct - step)
+    } else if (e.key === 'Home') {
+      e.preventDefault()
+      goalPanelPct = GOAL_PANEL_MIN
+    } else if (e.key === 'End') {
+      e.preventDefault()
+      goalPanelPct = GOAL_PANEL_MAX
+    }
   }
 
   // Generate prose if it doesn't exist yet (called before saving).
@@ -358,6 +426,7 @@
       proseText = session.prose.text
       proseHash = session.prose.tactic_state_hash
       chatWidthPct = session.meta.chat_width_pct || 25
+      goalPanelPct = session.meta.goal_panel_pct ?? 30
       proofView = session.meta.proof_view === 'prose' ? 'prose' : 'formal'
       sessionDirty = false
     })
@@ -410,6 +479,7 @@
 
     return () => {
       clearInterval(autoSaveTimer)
+      goalFetcher?.destroy()
       window.removeEventListener('keydown', handleKeydown)
       mql.removeEventListener('change', onSystemChange)
     }
@@ -593,15 +663,55 @@
       </div>
       <div class="flex-1 min-h-0">
         {#if proofView === 'formal'}
-          <Editor
-            bind:this={editorRef}
-            initialTheme={resolved}
-            theme={resolved}
-            {diagnostics}
-            {semanticTokens}
-            {fileProgress}
-            onchange={handleChange}
-          />
+          <div class="flex flex-col h-full">
+            <div class="min-h-0" style="flex: {100 - goalPanelPct}">
+              <Editor
+                bind:this={editorRef}
+                initialTheme={resolved}
+                theme={resolved}
+                {diagnostics}
+                {semanticTokens}
+                {fileProgress}
+                onchange={handleChange}
+                oncursorchange={handleCursorChange}
+              />
+            </div>
+
+            <!-- Horizontal splitter between editor and goal panel -->
+            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+            <div
+              role="separator"
+              aria-orientation="horizontal"
+              aria-label="Resize goal panel"
+              aria-valuenow={goalPanelPct}
+              aria-valuemin={GOAL_PANEL_MIN}
+              aria-valuemax={GOAL_PANEL_MAX}
+              tabindex="0"
+              class="splitter-grip cursor-row-resize flex-shrink-0 bg-bg-tertiary flex items-center justify-center
+                border-t border-b border-border
+                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              style="height: 10px"
+              onpointerdown={onGoalSplitterPointerDown}
+              onpointermove={onGoalSplitterPointerMove}
+              onpointerup={onGoalSplitterPointerUp}
+              onkeydown={onGoalSplitterKeydown}
+            >
+              <div class="flex gap-1">
+                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
+                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
+                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
+              </div>
+            </div>
+
+            <div class="min-h-0" style="flex: {goalPanelPct}">
+              <GoalPanel
+                {goalText}
+                cursorLine={goalCursorLine}
+                onHighlightLine={handleHighlightLine}
+              />
+            </div>
+          </div>
         {:else}
           <ProsePanel
             proseHtml={renderedProseHtml}
