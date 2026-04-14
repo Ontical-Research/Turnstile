@@ -30,7 +30,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use lsp::{
     CodeActionInfo, CompletionItem, DefinitionLocation, DocumentSymbolInfo, HoverInfo, LspClient,
-    LspError, LspStatus, WorkspaceEditDto,
+    LspError, LspNotification, LspStatus, WorkspaceEditDto,
 };
 
 pub struct AppState {
@@ -696,33 +696,35 @@ fn handle_lsp_message(
         }
     }
 
-    if let Some(method) = msg.get("method").and_then(|m| m.as_str()) {
-        let params = msg.get("params").cloned().unwrap_or_else(|| json!({}));
-        match method {
-            "textDocument/publishDiagnostics" => {
-                let diagnostics = lsp::parse_diagnostics(&params);
+    // Only messages with a "method" field are notifications we might handle.
+    // Everything else (responses without `result.capabilities` or
+    // `result.data`) is ignored upstream.
+    let Some(method) = msg.get("method").and_then(|m| m.as_str()) else {
+        return;
+    };
+
+    match serde_json::from_value::<LspNotification>(msg.clone()) {
+        Ok(LspNotification::PublishDiagnostics(params)) => {
+            let diagnostics = lsp::parse_diagnostics(&params);
+            let state = app.state::<AppState>();
+            *state.current_diagnostics.lock().unwrap() = diagnostics.clone();
+            app.emit("lsp-diagnostics", diagnostics).ok();
+        }
+        Ok(LspNotification::FileProgress(params)) => {
+            let ranges = lsp::parse_file_progress(&params);
+            let elaboration_done = ranges.is_empty();
+            app.emit("lsp-file-progress", ranges).ok();
+            if elaboration_done {
                 let state = app.state::<AppState>();
-                *state.current_diagnostics.lock().unwrap() = diagnostics.clone();
-                app.emit("lsp-diagnostics", diagnostics).ok();
+                let seq = state.goal_state_seq.fetch_add(1, Ordering::SeqCst) + 1;
+                spawn_goal_state_refresh(app.clone(), seq);
             }
-            "$/lean/fileProgress" => {
-                let ranges = lsp::parse_file_progress(&params);
-                let elaboration_done = ranges.is_empty();
-                app.emit("lsp-file-progress", ranges).ok();
-                if elaboration_done {
-                    let state = app.state::<AppState>();
-                    let seq = state.goal_state_seq.fetch_add(1, Ordering::SeqCst) + 1;
-                    spawn_goal_state_refresh(app.clone(), seq);
-                }
-            }
-            "window/logMessage" | "window/showMessage" => {
-                if let Some(message) = params.get("message").and_then(|m| m.as_str()) {
-                    log::info!("LSP: {message}");
-                }
-            }
-            _ => {
-                log::debug!("Unhandled LSP notification: {method}");
-            }
+        }
+        Ok(LspNotification::LogMessage(p) | LspNotification::ShowMessage(p)) => {
+            log::info!("LSP: {}", p.message);
+        }
+        Err(_) => {
+            log::debug!("Unhandled LSP notification: {method}");
         }
     }
 }
