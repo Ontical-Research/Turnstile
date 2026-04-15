@@ -1,5 +1,6 @@
 <script lang="ts">
   import { parseBlocks } from '../lib/markdown'
+  import { highlightLean } from '../lib/leanHighlight'
 
   interface Props {
     goalText: string
@@ -79,6 +80,7 @@
             {block.content}
           </p>
         {:else}
+          <!-- eslint-disable svelte/no-at-html-tags -- highlightLean HTML-escapes all content; only emits cm-lean-* spans -->
           <pre
             class="text-[13px] font-mono mb-2 leading-relaxed">{#each block.content.split('\n') as line, idx (idx)}{@const flatIdx =
                 (codeBlockOffsets[blockIdx] ?? 0) + idx}<div
@@ -93,7 +95,8 @@
                 }}
                 onkeydown={(e) => {
                   handleLineKeydown(e, flatIdx)
-                }}>{line}</div>{/each}</pre>
+                }}>{@html highlightLean(line)}</div>{/each}</pre>
+          <!-- eslint-enable svelte/no-at-html-tags -->
         {/if}
       {/each}
     {/if}
