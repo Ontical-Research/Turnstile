@@ -1,6 +1,7 @@
 <script lang="ts">
   import { parseBlocks } from '../lib/markdown'
   import { lspHoverGoalPanel, type HoverInfo } from '../lib/lspRequests'
+  import { computeHighlightedPanelIndices } from '../lib/editorHelpers'
   import CodeWindow from './CodeWindow.svelte'
   import type { ResolvedTheme } from '../lib/theme'
 
@@ -13,22 +14,15 @@
      */
     goalLineToProofLine: (number | null)[]
     theme: ResolvedTheme
-    onHighlightLine?: (line: number | null) => void
+    /** Current cursor line in the Formal Proof editor (0-indexed LSP). */
+    cursorLine: number | null
+    /** True when the Formal Proof editor has focus. */
+    editorFocused: boolean
   }
 
-  let { goalText, goalLineToProofLine, theme, onHighlightLine }: Props = $props()
+  let { goalText, goalLineToProofLine, theme, cursorLine, editorFocused }: Props = $props()
 
-  let highlightedFlatIdx = $state<number | null>(null)
   let blocks = $derived(parseBlocks(goalText))
-
-  // Reset highlight whenever the goal text changes.
-  let prevGoalText = ''
-  $effect(() => {
-    if (goalText !== prevGoalText) {
-      prevGoalText = goalText
-      highlightedFlatIdx = null
-    }
-  })
 
   /**
    * For each block, precompute the starting flat index and line count so
@@ -55,28 +49,26 @@
     return (blockExtents[blockIdx]?.start ?? 0) + localLine
   }
 
-  function handleLineClick(flatIdx: number): void {
-    if (highlightedFlatIdx === flatIdx) {
-      highlightedFlatIdx = null
-      onHighlightLine?.(null)
-    } else {
-      highlightedFlatIdx = flatIdx
-      onHighlightLine?.(goalLineToProofLine[flatIdx] ?? null)
-    }
-  }
+  // Reverse-lookup: which panel rows correspond to the editor's cursor line?
+  // Gated on editor focus so the highlight only appears when the Formal Proof
+  // editor is the active surface, matching VSCode's behavior.
+  let highlightedFlatIndices = $derived(
+    computeHighlightedPanelIndices(goalLineToProofLine, cursorLine, editorFocused),
+  )
 
   /**
    * Resolve the active line (1-indexed, within the given block) for
-   * CodeWindow. Returns null when the current highlight is in a different
-   * block or no highlight is active.
+   * CodeWindow. Returns the first matching panel row that falls inside this
+   * block, or null when none does — multi-match within one block collapses
+   * to the earliest row, which is enough for the common 1:1-per-block case.
    */
   function activeLineForBlock(blockIdx: number): number | null {
-    if (highlightedFlatIdx === null) return null
     const extent = blockExtents[blockIdx]
     if (!extent || extent.start < 0) return null
-    const local = highlightedFlatIdx - extent.start
-    if (local < 0 || local >= extent.count) return null
-    return local + 1
+    for (let local = 0; local < extent.count; local++) {
+      if (highlightedFlatIndices.has(extent.start + local)) return local + 1
+    }
+    return null
   }
 
   function fetchHoverFor(
@@ -106,9 +98,6 @@
               content={block.content}
               {theme}
               activeLine={activeLineForBlock(blockIdx)}
-              onLineClick={(line: number) => {
-                handleLineClick(flatIdxFor(blockIdx, line - 1))
-              }}
               fetchHover={(line: number, character: number) =>
                 fetchHoverFor(blockIdx, line, character)}
             />

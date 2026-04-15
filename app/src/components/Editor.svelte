@@ -13,6 +13,7 @@
     wordWrap?: boolean
     onchange: (content: string) => void
     oncursorchange?: (line: number, col: number) => void
+    onfocuschange?: (focused: boolean) => void
     ontogglewrap?: () => void
     onexternaldef?: (uri: string) => void
     currentUri?: () => string
@@ -27,6 +28,7 @@
     wordWrap = false,
     onchange,
     oncursorchange,
+    onfocuschange,
     ontogglewrap,
     onexternaldef,
     currentUri,
@@ -37,10 +39,6 @@
 
   export function setContent(text: string): void {
     handle?.setContent(text)
-  }
-
-  export function setGoalLines(lines: number[]): void {
-    handle?.setGoalLines(lines)
   }
 
   export function jumpTo(line: number, character: number): void {
@@ -71,6 +69,7 @@
     handle = mountEditor(container, initialTheme, {
       onChange: onchange,
       onCursorChange: oncursorchange,
+      onFocusChange: onfocuschange,
       onToggleWrap: ontogglewrap,
       onExternalDef: onexternaldef,
       currentUri,

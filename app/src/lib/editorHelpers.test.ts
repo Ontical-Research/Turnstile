@@ -10,6 +10,7 @@ import {
   buildSemanticTokenRanges,
   buildDiagnosticRanges,
   computeGoalLines,
+  computeHighlightedPanelIndices,
 } from './editorHelpers'
 
 // ---------------------------------------------------------------------------
@@ -330,5 +331,45 @@ describe('computeGoalLines', () => {
 
   it('deduplicates across out-of-bounds and duplicate inputs', () => {
     expect(computeGoalLines(doc, [2, 99, 2, 0, 3, 3])).toEqual([2, 3])
+  })
+})
+
+// ---------------------------------------------------------------------------
+// computeHighlightedPanelIndices
+// ---------------------------------------------------------------------------
+
+describe('computeHighlightedPanelIndices', () => {
+  // Goal-panel flat indices → 1-indexed Formal Proof line, or null if no
+  // source line produced that panel row. Cursor is 0-indexed LSP.
+  const mapping: (number | null)[] = [null, 3, 5, 3, null, 1]
+
+  it('returns empty set when editor is unfocused', () => {
+    expect(computeHighlightedPanelIndices(mapping, 2, false)).toEqual(new Set())
+  })
+
+  it('returns empty set when cursor line is null', () => {
+    expect(computeHighlightedPanelIndices(mapping, null, true)).toEqual(new Set())
+  })
+
+  it('returns all panel indices matching the cursor line (1-indexed shift)', () => {
+    // cursor=2 (LSP 0-indexed) → source line 3 → panel indices 1 and 3
+    expect(computeHighlightedPanelIndices(mapping, 2, true)).toEqual(new Set([1, 3]))
+  })
+
+  it('returns a single match when only one panel row corresponds', () => {
+    // cursor=4 → source line 5 → panel index 2
+    expect(computeHighlightedPanelIndices(mapping, 4, true)).toEqual(new Set([2]))
+  })
+
+  it('returns empty set when no panel row corresponds to the cursor line', () => {
+    // cursor=6 → source line 7 → no match
+    expect(computeHighlightedPanelIndices(mapping, 6, true)).toEqual(new Set())
+  })
+
+  it('never matches null panel entries', () => {
+    // null entries represent blank/unmatched panel rows; they should never
+    // be highlighted regardless of cursor line.
+    const nullMapping: (number | null)[] = [null, null, null]
+    expect(computeHighlightedPanelIndices(nullMapping, 0, true)).toEqual(new Set())
   })
 })
