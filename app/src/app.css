@@ -79,14 +79,14 @@
   --error: #f85149; /* danger.fg */
   --warning: #d29922; /* attention.fg */
   --success: #3fb950; /* success.fg */
-  --progress: #388bfd; /* accent.fg */
+  --progress: #d29922; /* attention amber */
 
   /* Semi-transparent color variants for selection and diagnostic backgrounds */
   --selection-bg: rgba(56, 139, 253, 0.3); /* accent/30% */
   --accent-bg: rgba(56, 139, 253, 0.15); /* accent/15% */
   --error-bg: rgba(248, 81, 73, 0.12); /* danger/12% */
   --warning-bg: rgba(210, 153, 34, 0.12); /* attention/12% */
-  --progress-bg: rgba(56, 139, 253, 0.08); /* accent/8% */
+  --progress-bg: rgba(210, 153, 34, 0.28); /* amber/28% */
 
   /* CodeMirror syntax colors — GitHub Dark */
   --cm-keyword: #ff7b72; /* red.3 */
@@ -115,14 +115,14 @@ html.light {
   --error: #d1242f; /* danger.fg */
   --warning: #9a6700; /* attention.fg */
   --success: #1a7f37; /* success.fg */
-  --progress: #0969da; /* accent.fg */
+  --progress: #9a6700; /* attention amber */
 
   /* Semi-transparent color variants — suit white background */
   --selection-bg: rgba(9, 105, 218, 0.2); /* accent/20% */
   --accent-bg: rgba(9, 105, 218, 0.1); /* accent/10% */
   --error-bg: rgba(209, 36, 47, 0.08); /* danger/8% */
   --warning-bg: rgba(154, 103, 0, 0.08); /* attention/8% */
-  --progress-bg: rgba(9, 105, 218, 0.05); /* accent/5% */
+  --progress-bg: rgba(154, 103, 0, 0.22); /* amber/22% */
 
   /* CodeMirror syntax colors — GitHub Light */
   --cm-keyword: #cf222e; /* red.5 */
@@ -152,12 +152,12 @@ html.light {
     --error: #d1242f;
     --warning: #9a6700;
     --success: #1a7f37;
-    --progress: #0969da;
+    --progress: #9a6700;
     --selection-bg: rgba(9, 105, 218, 0.2);
     --accent-bg: rgba(9, 105, 218, 0.1);
     --error-bg: rgba(209, 36, 47, 0.08);
     --warning-bg: rgba(154, 103, 0, 0.08);
-    --progress-bg: rgba(9, 105, 218, 0.05);
+    --progress-bg: rgba(154, 103, 0, 0.22);
     --cm-keyword: #cf222e;
     --cm-type: #6639ba;
     --cm-function: #6639ba;
