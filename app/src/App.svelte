@@ -570,6 +570,7 @@
                 ></div>
                 <span
                   class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
+                  data-testid="lower-panel-header"
                 >
                   {sessionState.proofView === 'formal' ? 'Goal State' : 'Prose Proof'}
                 </span>
