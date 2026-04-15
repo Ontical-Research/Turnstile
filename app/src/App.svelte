@@ -58,9 +58,14 @@
   let setupError = $state(false)
   let showSettings = $state(false)
 
-  // Cursor position displayed in the footer row (0-indexed to 1-indexed).
-  let cursorLineDisplay = $state(1)
-  let cursorColDisplay = $state(1)
+  // Cursor position in 0-indexed LSP coordinates. Drives both the footer
+  // display (1-indexed) and Goal-State-panel line highlighting.
+  let cursorLine = $state<number | null>(null)
+  let cursorCol = $state<number | null>(null)
+  let editorFocused = $state(false)
+
+  let cursorLineDisplay = $derived((cursorLine ?? 0) + 1)
+  let cursorColDisplay = $derived((cursorCol ?? 0) + 1)
 
   const PROOF_URI = 'file:///proof.lean'
 
@@ -201,13 +206,12 @@
   }
 
   function handleCursorChange(line: number, col: number): void {
-    cursorLineDisplay = line + 1
-    cursorColDisplay = col + 1
+    cursorLine = line
+    cursorCol = col
   }
 
-  function handleHighlightLine(line: number | null): void {
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call -- Svelte 5 bind:this doesn't expose exported functions in the component type
-    editorRef?.setGoalLines(line !== null ? [line] : [])
+  function handleFocusChange(focused: boolean): void {
+    editorFocused = focused
   }
 
   function onGoalSplitterPointerDown(e: PointerEvent): void {
@@ -525,6 +529,7 @@
               currentUri={() => PROOF_URI}
               onchange={handleChange}
               oncursorchange={handleCursorChange}
+              onfocuschange={handleFocusChange}
               ontogglewrap={toggleWordWrap}
               onexternaldef={handleExternalDef}
             />
@@ -604,7 +609,8 @@
                   goalText={lspState.goalText}
                   goalLineToProofLine={lspState.goalLineToProofLine}
                   theme={resolved}
-                  onHighlightLine={handleHighlightLine}
+                  {cursorLine}
+                  {editorFocused}
                 />
               {:else}
                 <ProsePanel

@@ -154,3 +154,28 @@ export function computeGoalLines(doc: DocLike, lineNums: number[]): number[] {
   }
   return Array.from(seen).sort((a, b) => a - b)
 }
+
+/**
+ * Given the forward mapping `goalLineToProofLine` (flat panel-row index →
+ * 1-indexed Formal Proof line), return the set of panel-row indices that
+ * correspond to the editor's current cursor line.
+ *
+ * `cursorLine` is 0-indexed LSP (as reported by the cursor listener); the
+ * mapping entries are 1-indexed, so we compare against `cursorLine + 1`.
+ * Returns an empty set when the editor is unfocused or the cursor is unset
+ * — highlighting is gated on focus so it only appears when the Formal Proof
+ * editor is the active surface, matching VSCode's behavior.
+ */
+export function computeHighlightedPanelIndices(
+  goalLineToProofLine: (number | null)[],
+  cursorLine: number | null,
+  editorFocused: boolean,
+): Set<number> {
+  const out = new Set<number>()
+  if (!editorFocused || cursorLine === null) return out
+  const target = cursorLine + 1
+  goalLineToProofLine.forEach((v, i) => {
+    if (v === target) out.add(i)
+  })
+  return out
+}

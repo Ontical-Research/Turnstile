@@ -70,8 +70,6 @@ import {
   themeExtension,
   setSemanticTokensEffect,
   semanticTokensField,
-  setActiveLineEffect,
-  activeLineField,
 } from './codeWindowExtensions'
 
 // ---------------------------------------------------------------------------
@@ -285,7 +283,6 @@ interface EditorHandle {
   applySemanticTokens(tokens: SemanticToken[]): void
   applyDiagnostics(diagnostics: DiagnosticInfo[]): void
   applyFileProgress(ranges: FileProgressRange[]): void
-  setGoalLines(lines: number[]): void
   setContent(text: string): void
   setTheme(theme: ResolvedTheme): void
   setWordWrap(enabled: boolean): void
@@ -300,6 +297,8 @@ interface EditorHandle {
 interface MountEditorOptions {
   onChange: (content: string) => void
   onCursorChange?: ((line: number, col: number) => void) | undefined
+  /** Called when the editor's focus state changes (gained or lost). */
+  onFocusChange?: ((focused: boolean) => void) | undefined
   /** Called when the user presses Option/Alt+Z or clicks the footer wrap indicator. */
   onToggleWrap?: (() => void) | undefined
   /** Called when go-to-definition resolves a target in another file. */
@@ -323,6 +322,7 @@ export function mountEditor(
 
   const onChange = options.onChange
   const onCursorChangeCb = options.onCursorChange
+  const onFocusChangeCb = options.onFocusChange
   const onToggleWrap = options.onToggleWrap
   const onExternalDef = options.onExternalDef ?? ((_uri: string) => undefined)
   const currentUri = options.currentUri ?? (() => 'file:///proof.lean')
@@ -340,6 +340,14 @@ export function mountEditor(
           const head = update.state.selection.main.head
           const line = update.state.doc.lineAt(head)
           onCursorChangeCb(cmLineToLsp(line.number), head - line.from)
+        }
+      })
+    : []
+
+  const focusListener = onFocusChangeCb
+    ? EditorView.updateListener.of((update: ViewUpdate) => {
+        if (update.focusChanged) {
+          onFocusChangeCb(update.view.hasFocus)
         }
       })
     : []
@@ -400,7 +408,6 @@ export function mountEditor(
         tooltips({ parent: document.body }),
         diagnosticGutter,
         fileProgressExtension(),
-        activeLineField,
         indentationMarkers(),
         gotoDefinitionExtension({ onExternalDef, currentUri }),
         codeActionsExtension({ currentUri }),
@@ -408,6 +415,7 @@ export function mountEditor(
         wrapCompartment.of([]),
         updateListener,
         cursorListener,
+        focusListener,
         baseTheme,
         themeCompartment.of(themeExtension(initialTheme)),
       ],
@@ -424,9 +432,6 @@ export function mountEditor(
     },
     applyFileProgress(ranges) {
       view.dispatch({ effects: setFileProgressEffect.of(ranges) })
-    },
-    setGoalLines(lines: number[]) {
-      view.dispatch({ effects: setActiveLineEffect.of(lines) })
     },
     setContent(text: string) {
       view.dispatch({
