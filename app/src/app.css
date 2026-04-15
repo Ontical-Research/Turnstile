@@ -64,106 +64,106 @@
     'JetBrains Mono', ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', monospace;
 }
 
-/* ── Dark theme — Solarized Dark ─────────────────────────────────────── */
+/* ── Dark theme — GitHub Dark ─────────────────────────────────────────── */
 
 :root {
-  --bg-primary: #002b36; /* base03 */
-  --bg-secondary: #073642; /* base02 */
-  --bg-tertiary: #073642; /* base02 (used for gutters, panels) */
-  --border: #586e75; /* base01 */
-  --text-primary: #839496; /* base0 */
-  --text-secondary: #586e75; /* base01 */
-  --accent: #268bd2; /* blue */
-  --accent-hover: #2aa198; /* cyan */
-  --accent-active: #6c71c4; /* violet */
-  --error: #dc322f; /* red */
-  --warning: #b58900; /* yellow */
-  --success: #859900; /* green */
-  --progress: #268bd2; /* blue */
+  --bg-primary: #0d1117; /* canvas.default */
+  --bg-secondary: #161b22; /* canvas.subtle */
+  --bg-tertiary: #21262d; /* canvas.inset */
+  --border: #30363d; /* border.default */
+  --text-primary: #e6edf3; /* fg.default */
+  --text-secondary: #7d8590; /* fg.muted */
+  --accent: #388bfd; /* accent.fg */
+  --accent-hover: #58a6ff; /* blue.3 */
+  --accent-active: #1f6feb; /* blue.5 */
+  --error: #f85149; /* danger.fg */
+  --warning: #d29922; /* attention.fg */
+  --success: #3fb950; /* success.fg */
+  --progress: #388bfd; /* accent.fg */
 
   /* Semi-transparent color variants for selection and diagnostic backgrounds */
-  --selection-bg: rgba(38, 139, 210, 0.25); /* blue/25% */
-  --accent-bg: rgba(38, 139, 210, 0.15); /* blue/15% */
-  --error-bg: rgba(220, 50, 47, 0.12); /* red/12% */
-  --warning-bg: rgba(181, 137, 0, 0.12); /* yellow/12% */
-  --progress-bg: rgba(38, 139, 210, 0.08); /* blue/8% */
+  --selection-bg: rgba(56, 139, 253, 0.3); /* accent/30% */
+  --accent-bg: rgba(56, 139, 253, 0.15); /* accent/15% */
+  --error-bg: rgba(248, 81, 73, 0.12); /* danger/12% */
+  --warning-bg: rgba(210, 153, 34, 0.12); /* attention/12% */
+  --progress-bg: rgba(56, 139, 253, 0.08); /* accent/8% */
 
-  /* CodeMirror syntax colors — Solarized canonical assignments */
-  --cm-keyword: #859900; /* green */
-  --cm-type: #b58900; /* yellow */
-  --cm-function: #268bd2; /* blue */
-  --cm-string: #2aa198; /* cyan */
-  --cm-number: #2aa198; /* cyan */
-  --cm-comment: #586e75; /* base01 */
+  /* CodeMirror syntax colors — GitHub Dark */
+  --cm-keyword: #ff7b72; /* red.3 */
+  --cm-type: #d2a8ff; /* purple.2 */
+  --cm-function: #d2a8ff; /* purple.2 */
+  --cm-string: #a5d6ff; /* blue.1 */
+  --cm-number: #79c0ff; /* blue.2 */
+  --cm-comment: #8b949e; /* neutral.8 */
 }
 
-/* ── Light theme — Solarized Light ──────────────────────────────────── */
+/* ── Light theme — GitHub Light ──────────────────────────────────────── */
 /* Applied to <html> so CSS variables override :root everywhere, including
    fixed-position elements (modals, overlays) that don't inherit from a
    child div. */
 
 html.light {
-  --bg-primary: #fdf6e3; /* base3 */
-  --bg-secondary: #eee8d5; /* base2 */
-  --bg-tertiary: #eee8d5; /* base2 (used for gutters, panels) */
-  --border: #93a1a1; /* base1 */
-  --text-primary: #657b83; /* base00 */
-  --text-secondary: #93a1a1; /* base1 */
-  --accent: #268bd2; /* blue */
-  --accent-hover: #2aa198; /* cyan */
-  --accent-active: #6c71c4; /* violet */
-  --error: #dc322f; /* red */
-  --warning: #b58900; /* yellow */
-  --success: #859900; /* green */
-  --progress: #268bd2; /* blue */
+  --bg-primary: #ffffff; /* canvas.default */
+  --bg-secondary: #f6f8fa; /* canvas.subtle */
+  --bg-tertiary: #eaeef2; /* canvas.inset */
+  --border: #d0d7de; /* border.default */
+  --text-primary: #1f2328; /* fg.default */
+  --text-secondary: #656d76; /* fg.muted */
+  --accent: #0969da; /* accent.fg */
+  --accent-hover: #218bff; /* blue.4 */
+  --accent-active: #0550ae; /* blue.6 */
+  --error: #d1242f; /* danger.fg */
+  --warning: #9a6700; /* attention.fg */
+  --success: #1a7f37; /* success.fg */
+  --progress: #0969da; /* accent.fg */
 
-  /* Semi-transparent color variants — lighter opacities suit cream background */
-  --selection-bg: rgba(38, 139, 210, 0.2); /* blue/20% */
-  --accent-bg: rgba(38, 139, 210, 0.12); /* blue/12% */
-  --error-bg: rgba(220, 50, 47, 0.1); /* red/10% */
-  --warning-bg: rgba(181, 137, 0, 0.1); /* yellow/10% */
-  --progress-bg: rgba(38, 139, 210, 0.06); /* blue/6% */
+  /* Semi-transparent color variants — suit white background */
+  --selection-bg: rgba(9, 105, 218, 0.2); /* accent/20% */
+  --accent-bg: rgba(9, 105, 218, 0.1); /* accent/10% */
+  --error-bg: rgba(209, 36, 47, 0.08); /* danger/8% */
+  --warning-bg: rgba(154, 103, 0, 0.08); /* attention/8% */
+  --progress-bg: rgba(9, 105, 218, 0.05); /* accent/5% */
 
-  /* CodeMirror syntax colors — Solarized canonical assignments */
-  --cm-keyword: #859900; /* green */
-  --cm-type: #b58900; /* yellow */
-  --cm-function: #268bd2; /* blue */
-  --cm-string: #2aa198; /* cyan */
-  --cm-number: #2aa198; /* cyan */
-  --cm-comment: #93a1a1; /* base1 */
+  /* CodeMirror syntax colors — GitHub Light */
+  --cm-keyword: #cf222e; /* red.5 */
+  --cm-type: #6639ba; /* purple.6 */
+  --cm-function: #6639ba; /* purple.6 */
+  --cm-string: #0a3069; /* blue.8 */
+  --cm-number: #0550ae; /* blue.6 */
+  --cm-comment: #59636e; /* neutral.9 */
 }
 
 /* ── System preference fallback ─────────────────────────────────────────
-   Applies Solarized Light variables before JS boots so users in light-mode
+   Applies GitHub Light variables before JS boots so users in light-mode
    OS don't see a flash of the dark theme.  Once the Svelte $effect adds/
    removes the `.light` class the html.light block above takes over instead. */
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme-resolved]) {
-    --bg-primary: #fdf6e3;
-    --bg-secondary: #eee8d5;
-    --bg-tertiary: #eee8d5;
-    --border: #93a1a1;
-    --text-primary: #657b83;
-    --text-secondary: #93a1a1;
-    --accent: #268bd2;
-    --accent-hover: #2aa198;
-    --accent-active: #6c71c4;
-    --error: #dc322f;
-    --warning: #b58900;
-    --success: #859900;
-    --progress: #268bd2;
-    --selection-bg: rgba(38, 139, 210, 0.2);
-    --accent-bg: rgba(38, 139, 210, 0.12);
-    --error-bg: rgba(220, 50, 47, 0.1);
-    --warning-bg: rgba(181, 137, 0, 0.1);
-    --progress-bg: rgba(38, 139, 210, 0.06);
-    --cm-keyword: #859900;
-    --cm-type: #b58900;
-    --cm-function: #268bd2;
-    --cm-string: #2aa198;
-    --cm-number: #2aa198;
-    --cm-comment: #93a1a1;
+    --bg-primary: #ffffff;
+    --bg-secondary: #f6f8fa;
+    --bg-tertiary: #eaeef2;
+    --border: #d0d7de;
+    --text-primary: #1f2328;
+    --text-secondary: #656d76;
+    --accent: #0969da;
+    --accent-hover: #218bff;
+    --accent-active: #0550ae;
+    --error: #d1242f;
+    --warning: #9a6700;
+    --success: #1a7f37;
+    --progress: #0969da;
+    --selection-bg: rgba(9, 105, 218, 0.2);
+    --accent-bg: rgba(9, 105, 218, 0.1);
+    --error-bg: rgba(209, 36, 47, 0.08);
+    --warning-bg: rgba(154, 103, 0, 0.08);
+    --progress-bg: rgba(9, 105, 218, 0.05);
+    --cm-keyword: #cf222e;
+    --cm-type: #6639ba;
+    --cm-function: #6639ba;
+    --cm-string: #0a3069;
+    --cm-number: #0550ae;
+    --cm-comment: #59636e;
   }
 }
 
