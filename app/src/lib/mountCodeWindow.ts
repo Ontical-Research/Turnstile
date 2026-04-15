@@ -5,7 +5,7 @@
  * so different mount sites resolve hover against different real documents.
  */
 
-import { EditorState, Compartment } from '@codemirror/state'
+import { EditorState, Compartment, type Extension } from '@codemirror/state'
 import { EditorView, tooltips } from '@codemirror/view'
 import {
   baseTheme,
@@ -19,6 +19,37 @@ import type { ResolvedTheme } from './theme'
 
 /** Callback used by CodeWindow to resolve hover info. */
 export type CodeWindowHoverFn = (line: number, character: number) => Promise<HoverInfo | null>
+
+/**
+ * Build the click extension that translates a DOM click into a 1-indexed
+ * CodeMirror line number. Exported for direct unit testing — production
+ * callers get this wired up through `mountCodeWindow`.
+ */
+export function lineClickExtension(
+  getHandler: () => ((line: number) => void) | undefined,
+): Extension {
+  return EditorView.domEventHandlers({
+    click(event, view) {
+      const handler = getHandler()
+      if (!handler) return false
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
+      if (pos === null) return false
+      handler(view.state.doc.lineAt(pos).number)
+      return false
+    },
+  })
+}
+
+/**
+ * Indirect hover-fetch trampoline: defers to whatever callback the getter
+ * returns at call time, falling back to a resolved-null when no callback
+ * is currently registered. Exported for direct unit testing.
+ */
+export function indirectFetchHover(
+  getFetcher: () => CodeWindowHoverFn | undefined,
+): CodeWindowHoverFn {
+  return (line, character) => getFetcher()?.(line, character) ?? Promise.resolve(null)
+}
 
 interface CodeWindowOptions {
   initialTheme: ResolvedTheme
@@ -62,20 +93,8 @@ export function mountCodeWindow(
     fetchHover: options.fetchHover,
   }
 
-  const clickHandler = EditorView.domEventHandlers({
-    click(event, view) {
-      if (!callbacks.onLineClick) return false
-      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
-      if (pos === null) return false
-      const line = view.state.doc.lineAt(pos).number
-      callbacks.onLineClick(line)
-      return false
-    },
-  })
-
-  const hoverExtension = hoverTypeExtension(
-    (line, character) => callbacks.fetchHover?.(line, character) ?? Promise.resolve(null),
-  )
+  const clickHandler = lineClickExtension(() => callbacks.onLineClick)
+  const hoverExtension = hoverTypeExtension(indirectFetchHover(() => callbacks.fetchHover))
 
   const view = new EditorView({
     state: EditorState.create({
