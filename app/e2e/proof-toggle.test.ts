@@ -2,10 +2,11 @@ import { test, expect } from './fixtures'
 import { LEAN_SIMPLE_THEOREM } from './fixtures'
 
 test.describe('Proof View Toggle', () => {
-  test('toggle switches between editor and prose panel', async ({ page, mountApp }) => {
+  test('toggle swaps lower panel between goal state and prose', async ({ page, mountApp }) => {
     await mountApp()
 
-    // Initially the editor is visible and prose panel is not.
+    // The editor is always visible; the lower panel starts in Goal State
+    // (no prose panel yet).
     await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).not.toBeVisible()
 
@@ -14,12 +15,12 @@ test.describe('Proof View Toggle', () => {
     await expect(toggle).toBeVisible()
     await toggle.click()
 
-    // Editor should be hidden, prose panel visible.
-    await expect(page.locator('.cm-content')).not.toBeVisible()
+    // Editor stays visible; prose panel replaces the Goal State.
+    await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).toBeVisible()
   })
 
-  test('toggle back restores the editor', async ({ page, mountApp }) => {
+  test('toggle back restores the goal state panel', async ({ page, mountApp }) => {
     await mountApp()
 
     // Toggle to prose.
@@ -31,7 +32,7 @@ test.describe('Proof View Toggle', () => {
     await expect(toggleBack).toBeVisible()
     await toggleBack.click()
 
-    // Editor should be back.
+    // Editor stays visible throughout; prose panel is gone.
     await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).not.toBeVisible()
   })
@@ -39,9 +40,10 @@ test.describe('Proof View Toggle', () => {
   test('header title updates with view', async ({ page, mountApp }) => {
     await mountApp()
 
-    // Initial title is "Formal Proof". Use .first() since ChatPanel also has an uppercase span.
+    // The lower panel header shows "Goal State" in formal view and "Prose Proof" in prose view.
+    // Use .first() since ChatPanel also has an uppercase span.
     const header = page.locator('.flex.flex-col.flex-1 span.uppercase').first()
-    await expect(header).toHaveText('Formal Proof')
+    await expect(header).toHaveText('Goal State')
 
     // Toggle to prose.
     await page.locator('button[aria-label="Switch to Prose Proof"]').click()
@@ -49,7 +51,7 @@ test.describe('Proof View Toggle', () => {
 
     // Toggle back.
     await page.locator('button[aria-label="Switch to Formal Proof"]').click()
-    await expect(header).toHaveText('Formal Proof')
+    await expect(header).toHaveText('Goal State')
   })
 
   test('prose panel shows placeholder when no prose text', async ({ page, mountApp }) => {
@@ -114,9 +116,9 @@ test.describe('Proof View Toggle', () => {
       summary: null,
     })
 
-    // Prose panel should be visible, editor hidden.
+    // Prose panel should be visible; editor stays visible above it.
     await expect(page.locator('[data-testid="prose-panel"]')).toBeVisible()
-    await expect(page.locator('.cm-content')).not.toBeVisible()
+    await expect(page.locator('.cm-content')).toBeVisible()
   })
 
   test('toggle button is keyboard accessible', async ({ page, mountApp }) => {
