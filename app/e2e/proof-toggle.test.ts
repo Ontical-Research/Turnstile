@@ -2,10 +2,11 @@ import { test, expect } from './fixtures'
 import { LEAN_SIMPLE_THEOREM } from './fixtures'
 
 test.describe('Proof View Toggle', () => {
-  test('toggle switches between editor and prose panel', async ({ page, mountApp }) => {
+  test('toggle swaps lower panel between goal state and prose', async ({ page, mountApp }) => {
     await mountApp()
 
-    // Initially the editor is visible and prose panel is not.
+    // The editor is always visible; the lower panel starts in Goal State
+    // (no prose panel yet).
     await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).not.toBeVisible()
 
@@ -14,12 +15,12 @@ test.describe('Proof View Toggle', () => {
     await expect(toggle).toBeVisible()
     await toggle.click()
 
-    // Editor should be hidden, prose panel visible.
-    await expect(page.locator('.cm-content')).not.toBeVisible()
+    // Editor stays visible; prose panel replaces the Goal State.
+    await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).toBeVisible()
   })
 
-  test('toggle back restores the editor', async ({ page, mountApp }) => {
+  test('toggle back restores the goal state panel', async ({ page, mountApp }) => {
     await mountApp()
 
     // Toggle to prose.
@@ -31,7 +32,7 @@ test.describe('Proof View Toggle', () => {
     await expect(toggleBack).toBeVisible()
     await toggleBack.click()
 
-    // Editor should be back.
+    // Editor stays visible throughout; prose panel is gone.
     await expect(page.locator('.cm-content')).toBeVisible()
     await expect(page.locator('[data-testid="prose-panel"]')).not.toBeVisible()
   })
@@ -115,9 +116,9 @@ test.describe('Proof View Toggle', () => {
       summary: null,
     })
 
-    // Prose panel should be visible, editor hidden.
+    // Prose panel should be visible; editor stays visible above it.
     await expect(page.locator('[data-testid="prose-panel"]')).toBeVisible()
-    await expect(page.locator('.cm-content')).not.toBeVisible()
+    await expect(page.locator('.cm-content')).toBeVisible()
   })
 
   test('toggle button is keyboard accessible', async ({ page, mountApp }) => {
