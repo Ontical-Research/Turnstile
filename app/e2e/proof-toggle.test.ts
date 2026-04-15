@@ -39,9 +39,10 @@ test.describe('Proof View Toggle', () => {
   test('header title updates with view', async ({ page, mountApp }) => {
     await mountApp()
 
-    // Initial title is "Formal Proof". Use .first() since ChatPanel also has an uppercase span.
+    // The lower panel header shows "Goal State" in formal view and "Prose Proof" in prose view.
+    // Use .first() since ChatPanel also has an uppercase span.
     const header = page.locator('.flex.flex-col.flex-1 span.uppercase').first()
-    await expect(header).toHaveText('Formal Proof')
+    await expect(header).toHaveText('Goal State')
 
     // Toggle to prose.
     await page.locator('button[aria-label="Switch to Prose Proof"]').click()
@@ -49,7 +50,7 @@ test.describe('Proof View Toggle', () => {
 
     // Toggle back.
     await page.locator('button[aria-label="Switch to Formal Proof"]').click()
-    await expect(header).toHaveText('Formal Proof')
+    await expect(header).toHaveText('Goal State')
   })
 
   test('prose panel shows placeholder when no prose text', async ({ page, mountApp }) => {

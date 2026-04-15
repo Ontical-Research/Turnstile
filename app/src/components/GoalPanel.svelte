@@ -61,12 +61,6 @@
 </script>
 
 <div class="flex flex-col h-full">
-  <div class="flex items-center px-4 py-2 border-b border-border bg-bg-secondary shrink-0">
-    <span class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70">
-      Goal State
-    </span>
-  </div>
-
   <div class="flex-1 min-h-0 overflow-y-auto p-3">
     {#if !goalText}
       <div class="flex items-center justify-center h-full">

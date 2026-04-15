@@ -499,102 +499,109 @@
   <div class="flex h-full bg-bg-primary">
     <!-- Editor column (takes remaining space) -->
     <div class="flex flex-col flex-1 min-w-0">
-      <div
-        class="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary shrink-0"
-      >
-        <div class="flex items-center gap-2">
-          <div
-            class="w-2 h-2 rounded-full bg-accent transition-opacity duration-200"
-            class:opacity-80={sessionState.sessionDirty}
-            class:opacity-0={!sessionState.sessionDirty}
-          ></div>
-          <span
-            class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
-          >
-            {sessionState.proofView === 'formal' ? 'Formal Proof' : 'Prose Proof'}
-          </span>
-        </div>
-        <ProofViewToggle
-          view={sessionState.proofView}
-          onToggle={() => {
-            const nextView = sessionState.proofView === 'formal' ? 'prose' : 'formal'
-            setProofView(nextView)
-            if (nextView === 'prose' && !sessionState.proseText && sessionState.editorContent) {
-              setProseGenerating(true)
-              invoke('generate_prose')
-                .catch((err: unknown) => {
-                  const msg = err instanceof Error ? err.message : String(err)
-                  showError(`Prose generation failed: ${msg}`)
-                })
-                .finally(() => {
-                  setProseGenerating(false)
-                })
-            }
-          }}
-        />
-      </div>
       <div class="flex-1 min-h-0">
-        {#if sessionState.proofView === 'formal'}
-          <div class="flex flex-col h-full">
-            <div class="min-h-0" style="flex: {100 - layoutState.goalPanelPct}">
-              <Editor
-                bind:this={editorRef}
-                initialTheme={resolved}
-                theme={resolved}
-                diagnostics={lspState.diagnostics}
-                semanticTokens={lspState.semanticTokens}
-                fileProgress={lspState.fileProgress}
-                wordWrap={layoutState.wordWrap}
-                currentUri={() => PROOF_URI}
-                onchange={handleChange}
-                oncursorchange={handleCursorChange}
-                ontogglewrap={toggleWordWrap}
-                onexternaldef={handleExternalDef}
-              />
-            </div>
+        <div class="flex flex-col h-full">
+          <div class="min-h-0" style="flex: {100 - layoutState.goalPanelPct}">
+            <Editor
+              bind:this={editorRef}
+              initialTheme={resolved}
+              theme={resolved}
+              diagnostics={lspState.diagnostics}
+              semanticTokens={lspState.semanticTokens}
+              fileProgress={lspState.fileProgress}
+              wordWrap={layoutState.wordWrap}
+              currentUri={() => PROOF_URI}
+              onchange={handleChange}
+              oncursorchange={handleCursorChange}
+              ontogglewrap={toggleWordWrap}
+              onexternaldef={handleExternalDef}
+            />
+          </div>
 
-            <!-- Horizontal splitter between editor and goal panel -->
-            <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-            <div
-              role="separator"
-              aria-orientation="horizontal"
-              aria-label="Resize goal panel"
-              aria-valuenow={layoutState.goalPanelPct}
-              aria-valuemin={GOAL_PANEL_MIN}
-              aria-valuemax={GOAL_PANEL_MAX}
-              tabindex="0"
-              class="splitter-grip cursor-row-resize flex-shrink-0 bg-bg-tertiary flex items-center justify-center
-                border-t border-b border-border
-                focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-              style="height: 10px"
-              onpointerdown={onGoalSplitterPointerDown}
-              onpointermove={onGoalSplitterPointerMove}
-              onpointerup={onGoalSplitterPointerUp}
-              onkeydown={onGoalSplitterKeydown}
-            >
-              <div class="flex gap-1">
-                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
-                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
-                <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
-              </div>
-            </div>
-
-            <div class="min-h-0" style="flex: {layoutState.goalPanelPct}">
-              <GoalPanel
-                goalText={lspState.goalText}
-                goalLineToProofLine={lspState.goalLineToProofLine}
-                onHighlightLine={handleHighlightLine}
-              />
+          <!-- Horizontal splitter between editor and the lower panel -->
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize goal panel"
+            aria-valuenow={layoutState.goalPanelPct}
+            aria-valuemin={GOAL_PANEL_MIN}
+            aria-valuemax={GOAL_PANEL_MAX}
+            tabindex="0"
+            class="splitter-grip cursor-row-resize flex-shrink-0 bg-bg-tertiary flex items-center justify-center
+              border-t border-b border-border
+              focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            style="height: 10px"
+            onpointerdown={onGoalSplitterPointerDown}
+            onpointermove={onGoalSplitterPointerMove}
+            onpointerup={onGoalSplitterPointerUp}
+            onkeydown={onGoalSplitterKeydown}
+          >
+            <div class="flex gap-1">
+              <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
+              <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
+              <span class="w-1 h-1 rounded-full bg-text-secondary opacity-40"></span>
             </div>
           </div>
-        {:else}
-          <ProsePanel
-            proseHtml={sessionState.renderedProseHtml}
-            generating={sessionState.proseGenerating}
-            fontSize={settings.proseFontSize}
-          />
-        {/if}
+
+          <!-- Lower panel: header (label + toggle) above either GoalPanel or ProsePanel -->
+          <div class="min-h-0 flex flex-col" style="flex: {layoutState.goalPanelPct}">
+            <div
+              class="flex items-center justify-between px-4 py-2 border-b border-border bg-bg-secondary shrink-0"
+            >
+              <div class="flex items-center gap-2">
+                <div
+                  class="w-2 h-2 rounded-full bg-accent transition-opacity duration-200"
+                  class:opacity-80={sessionState.sessionDirty}
+                  class:opacity-0={!sessionState.sessionDirty}
+                ></div>
+                <span
+                  class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
+                >
+                  {sessionState.proofView === 'formal' ? 'Goal State' : 'Prose Proof'}
+                </span>
+              </div>
+              <ProofViewToggle
+                view={sessionState.proofView}
+                onToggle={() => {
+                  const nextView = sessionState.proofView === 'formal' ? 'prose' : 'formal'
+                  setProofView(nextView)
+                  if (
+                    nextView === 'prose' &&
+                    !sessionState.proseText &&
+                    sessionState.editorContent
+                  ) {
+                    setProseGenerating(true)
+                    invoke('generate_prose')
+                      .catch((err: unknown) => {
+                        const msg = err instanceof Error ? err.message : String(err)
+                        showError(`Prose generation failed: ${msg}`)
+                      })
+                      .finally(() => {
+                        setProseGenerating(false)
+                      })
+                  }
+                }}
+              />
+            </div>
+            <div class="flex-1 min-h-0">
+              {#if sessionState.proofView === 'formal'}
+                <GoalPanel
+                  goalText={lspState.goalText}
+                  goalLineToProofLine={lspState.goalLineToProofLine}
+                  onHighlightLine={handleHighlightLine}
+                />
+              {:else}
+                <ProsePanel
+                  proseHtml={sessionState.renderedProseHtml}
+                  generating={sessionState.proseGenerating}
+                  fontSize={settings.proseFontSize}
+                />
+              {/if}
+            </div>
+          </div>
+        </div>
       </div>
       <!-- Footer status strip: cursor position + word-wrap toggle. -->
       <div
