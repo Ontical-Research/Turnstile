@@ -118,12 +118,7 @@
     const keys: (keyof typeof DEFAULT_SETTINGS)[] =
       tab === 'assistant'
         ? ['assistantFontSize', 'assistantModel', 'assistantPrompt']
-        : [
-            'goalStateFontSize',
-            'proseProofFontSize',
-            'translationModel',
-            'translationPrompt',
-          ]
+        : ['goalStateFontSize', 'proseProofFontSize', 'translationModel', 'translationPrompt']
 
     // Optimistic font-size rows first (they have no draft).
     for (const key of keys) {

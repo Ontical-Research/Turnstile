@@ -47,11 +47,7 @@
 
 <div class="flex flex-col flex-1 min-h-0 gap-1">
   <!-- Sub-tablist: Write / Preview -->
-  <div
-    role="tablist"
-    aria-label="Prompt editor mode"
-    class="flex shrink-0 border-b border-border"
-  >
+  <div role="tablist" aria-label="Prompt editor mode" class="flex shrink-0 border-b border-border">
     <button
       type="button"
       role="tab"

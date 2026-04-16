@@ -11,7 +11,12 @@
   import GoalPanel from './goal-state/GoalPanel.svelte'
   import SymbolOutline from './formal-proof/SymbolOutline.svelte'
   import { lspDocumentSymbols } from './formal-proof/lspRequests'
-  import { settings, parseSettings, applySettings, setAvailableModels } from './setup/settings.svelte'
+  import {
+    settings,
+    parseSettings,
+    applySettings,
+    setAvailableModels,
+  } from './setup/settings.svelte'
   import type { ModelInfo } from './setup/settings.svelte'
   import type { ResolvedTheme } from './setup/theme'
   import { handleMenuEvent } from './session/menu'
