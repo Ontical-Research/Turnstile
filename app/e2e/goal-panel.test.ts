@@ -2,9 +2,8 @@
  * E2E tests for the Goal State panel.
  *
  * Each fenced code block in the goal text is rendered through the
- * `CodeWindow` component — a read-only CodeMirror 6 instance — and hovers
- * on identifiers fan out through the `lsp_hover_goal_panel` Tauri command
- * to the real Formal Proof document.
+ * `GoalBlock` component — a plain HTML renderer with hypothesis-name
+ * coloring and active-line highlighting.
  */
 
 import { test, expect } from './fixtures'
@@ -13,7 +12,7 @@ import { test, expect } from './fixtures'
 const GOAL_TEXT = ['```lean', 'case left', 'hp : p', 'hq : q', '⊢ p', '```'].join('\n')
 
 test.describe('GoalPanel', () => {
-  test('renders each code block through a CodeMirror CodeWindow', async ({
+  test('renders each code block as plain HTML with hypothesis styling', async ({
     page,
     mountApp,
     emitEvent,
@@ -24,13 +23,16 @@ test.describe('GoalPanel', () => {
       panel_line_to_source_line: [1, 1, 1, 1],
     })
 
-    // Two CodeMirror instances: the editable Editor and the read-only
-    // CodeWindow inside the goal panel.
-    await expect(page.locator('.cm-editor')).toHaveCount(2)
+    // Only one CodeMirror instance remains: the editable Editor.
+    await expect(page.locator('.cm-editor')).toHaveCount(1)
 
-    // The goal-state text should be visible inside the CodeWindow.
+    // The goal-state text should be visible inside the GoalBlock.
+    await expect(page.locator('.goal-block')).toHaveCount(1)
     await expect(page.getByText('case left')).toBeVisible()
     await expect(page.getByText(/hp : p/)).toBeVisible()
+
+    // Hypothesis names are wrapped in styled spans.
+    await expect(page.locator('.goal-hyp-name')).toHaveCount(2)
   })
 
   test('editor cursor highlights the matching goal-panel line when focused', async ({
@@ -53,22 +55,22 @@ test.describe('GoalPanel', () => {
       panel_line_to_source_line: [1, 1, 2, 2],
     })
 
-    const codeWindow = page.locator('.code-window .cm-editor')
+    const goalBlock = page.locator('.goal-block')
 
     // Cursor on source line 1 (after typing the first character) → first panel
-    // line that maps to source 1 is "case left" (CodeWindow line 1).
+    // line that maps to source 1 is "case left" (GoalBlock line 0).
     await page.keyboard.press('Home')
     await page.keyboard.press('ArrowUp')
-    await expect(codeWindow.locator('.cm-line.cm-goal-line')).toHaveCount(1)
-    await expect(codeWindow.locator('.cm-line.cm-goal-line')).toHaveText(/case left/)
+    await expect(goalBlock.locator('.goal-line-active')).toHaveCount(1)
+    await expect(goalBlock.locator('.goal-line-active')).toHaveText(/case left/)
 
     // Move the cursor down to source line 2 → first panel line that maps to
-    // source 2 is "hq : q" (CodeWindow line 3).
+    // source 2 is "hq : q" (GoalBlock line 2).
     await page.keyboard.press('ArrowDown')
-    await expect(codeWindow.locator('.cm-line.cm-goal-line')).toHaveText(/hq : q/)
+    await expect(goalBlock.locator('.goal-line-active')).toHaveText(/hq : q/)
 
     // Click into the goal panel — editor loses focus, highlight clears.
-    await codeWindow.click()
-    await expect(codeWindow.locator('.cm-line.cm-goal-line')).toHaveCount(0)
+    await goalBlock.click()
+    await expect(goalBlock.locator('.goal-line-active')).toHaveCount(0)
   })
 })

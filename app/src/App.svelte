@@ -608,7 +608,6 @@
                 <GoalPanel
                   goalText={lspState.goalText}
                   goalLineToProofLine={lspState.goalLineToProofLine}
-                  theme={resolved}
                   {cursorLine}
                   {editorFocused}
                 />
