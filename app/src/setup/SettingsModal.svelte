@@ -12,6 +12,7 @@
   import type { SettingsDraft } from './settings.svelte'
   import { showError } from '../session/errorNotification.svelte'
   import SelectField from './SelectField.svelte'
+  import PromptEditor from './PromptEditor.svelte'
 
   const { onClose }: { onClose: () => void } = $props()
 
@@ -84,8 +85,7 @@
     translationDraft.translationPrompt ?? defaultTranslationPrompt ?? '',
   )
 
-  function onAssistantPromptInput(e: Event): void {
-    const text = (e.target as HTMLTextAreaElement).value
+  function onAssistantPromptInput(text: string): void {
     // Collapse "same as default" back to null so the draft stays clean when the
     // user reverts edits manually.
     if (text === defaultAssistantPrompt && assistantDraft.committed.assistantPrompt === null) {
@@ -95,8 +95,7 @@
     }
   }
 
-  function onTranslationPromptInput(e: Event): void {
-    const text = (e.target as HTMLTextAreaElement).value
+  function onTranslationPromptInput(text: string): void {
     if (
       text === defaultTranslationPrompt &&
       translationDraft.committed.translationPrompt === null
@@ -465,15 +464,12 @@
               <span id="assistant-prompt-label" class="text-[13px] text-text-primary">
                 Assistant Prompt
               </span>
-              <textarea
-                aria-labelledby="assistant-prompt-label"
+              <PromptEditor
                 value={assistantPromptValue}
-                oninput={onAssistantPromptInput}
-                class="flex-1 min-h-[8rem] w-full rounded border border-border bg-bg-secondary
-                  px-3 py-2 text-[12px] text-text-primary font-mono resize-none
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                data-testid="assistant-prompt-textarea"
-              ></textarea>
+                onInput={onAssistantPromptInput}
+                testidPrefix="assistant-prompt"
+                ariaLabel="Assistant prompt"
+              />
             </div>
 
             <div class="flex items-center justify-between border-t border-border pt-3">
@@ -538,15 +534,12 @@
               <span id="translation-prompt-label" class="text-[13px] text-text-primary">
                 Translation Prompt
               </span>
-              <textarea
-                aria-labelledby="translation-prompt-label"
+              <PromptEditor
                 value={translationPromptValue}
-                oninput={onTranslationPromptInput}
-                class="flex-1 min-h-[8rem] w-full rounded border border-border bg-bg-secondary
-                  px-3 py-2 text-[12px] text-text-primary font-mono resize-none
-                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                data-testid="translation-prompt-textarea"
-              ></textarea>
+                onInput={onTranslationPromptInput}
+                testidPrefix="translation-prompt"
+                ariaLabel="Translation prompt"
+              />
             </div>
 
             <div class="flex items-center justify-between border-t border-border pt-3">
