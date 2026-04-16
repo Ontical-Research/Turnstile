@@ -454,7 +454,7 @@ jobs:
         uses: codecov/codecov-action@v5
         with:
           files: lcov-integration.info
-          flags: rust-integration
+          flags: rust
           token: ${{ secrets.CODECOV_TOKEN }}
 
   # ── Build ────────────────────────────────────────────────────────────
