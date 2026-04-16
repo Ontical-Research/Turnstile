@@ -11,16 +11,14 @@
   import GoalPanel from './goal-state/GoalPanel.svelte'
   import SymbolOutline from './formal-proof/SymbolOutline.svelte'
   import { lspDocumentSymbols } from './formal-proof/lspRequests'
-  import { theme, systemTheme, toggleTheme, resolveTheme } from './setup/theme'
-  import type { ResolvedTheme } from './setup/theme'
   import {
     settings,
     parseSettings,
     applySettings,
     setAvailableModels,
-    updateSetting,
   } from './setup/settings.svelte'
   import type { ModelInfo } from './setup/settings.svelte'
+  import type { ResolvedTheme } from './setup/theme'
   import { handleMenuEvent } from './session/menu'
   import { syncSaveMenuState } from './session/saveIndicator'
   import { errorNotification, showError, dismissError } from './session/errorNotification.svelte'
@@ -89,8 +87,13 @@
     editorRef?.jumpTo(line, character)
   }
 
-  // Derive the concrete dark/light theme from the preference + OS setting.
-  let resolved: ResolvedTheme = $derived(resolveTheme($theme, $systemTheme))
+  // Theme follows the OS: no in-app toggle. Initialize from matchMedia here
+  // so the first render is correct; onMount wires the change listener.
+  let resolved = $state<ResolvedTheme>(
+    typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light',
+  )
 
   // .light on <html> so fixed-position elements (modals, overlays) inherit CSS variables.
   // data-theme-resolved disables the CSS prefers-color-scheme fallback once JS is in control.
@@ -290,20 +293,19 @@
       },
     })
 
-    // Track the OS color-scheme preference so "auto" mode can react in real time.
+    // Track the OS color-scheme preference — we follow it unconditionally now
+    // that the in-app theme toggle has been removed.
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    systemTheme.set(mql.matches ? 'dark' : 'light')
+    resolved = mql.matches ? 'dark' : 'light'
     const onSystemChange = (e: MediaQueryListEvent): void => {
-      systemTheme.set(e.matches ? 'dark' : 'light')
+      resolved = e.matches ? 'dark' : 'light'
     }
     mql.addEventListener('change', onSystemChange)
 
     // Load persisted settings and available models from Rust backend.
     invoke<Record<string, unknown>>('get_settings')
       .then((raw) => {
-        const parsed = parseSettings(raw)
-        applySettings(parsed)
-        theme.set(parsed.theme)
+        applySettings(parseSettings(raw))
       })
       .catch(() => {
         /* use defaults */
@@ -503,17 +505,13 @@
   <div class="flex h-full bg-bg-primary">
     <!-- Editor column (takes remaining space) -->
     <div class="flex flex-col flex-1 min-w-0">
-      <!-- Top header: vertically aligns with the Assistant header in AssistantPanel.
-           min-h-[28px] on the inner row matches the w-7 h-7 toggle button that sets
-           the height of the Assistant header, so both header bottoms align. -->
+      <!-- Top header: vertically aligns with the Assistant header in AssistantPanel. -->
       <div class="flex items-center px-4 py-2 border-b border-border bg-bg-secondary shrink-0">
-        <div class="flex items-center min-h-[28px]">
-          <span
-            class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
-          >
-            Formal Proof
-          </span>
-        </div>
+        <span
+          class="text-[13px] font-semibold text-text-primary tracking-wide uppercase opacity-70"
+        >
+          Formal Proof
+        </span>
       </div>
       <div class="flex-1 min-h-0">
         <div class="flex flex-col h-full">
@@ -610,12 +608,13 @@
                   goalLineToProofLine={lspState.goalLineToProofLine}
                   {cursorLine}
                   {editorFocused}
+                  fontSize={settings.goalStateFontSize}
                 />
               {:else}
                 <ProsePanel
                   proseHtml={sessionState.renderedProseHtml}
                   generating={sessionState.proseGenerating}
-                  fontSize={settings.proseFontSize}
+                  fontSize={settings.proseProofFontSize}
                 />
               {/if}
             </div>
@@ -668,17 +667,8 @@
       style="width: {layoutState.assistantWidthPct}%"
     >
       <AssistantPanel
-        theme={resolved}
         sessionDirty={sessionState.sessionDirty}
         fontSize={settings.assistantFontSize}
-        onToggleTheme={() => {
-          const next = toggleTheme(resolved)
-          theme.set(next)
-          void updateSetting('theme', next).catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err)
-            showError(`Failed to save theme: ${msg}`)
-          })
-        }}
       />
     </div>
   </div>

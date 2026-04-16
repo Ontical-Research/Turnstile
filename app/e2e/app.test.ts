@@ -1,4 +1,4 @@
-import { type Page, type Locator } from '@playwright/test'
+import { type Page } from '@playwright/test'
 import {
   test,
   expect,
@@ -26,11 +26,6 @@ async function typeMultiLine(page: Page, text: string): Promise<void> {
   }
 }
 
-/** Locator for the theme toggle button. */
-function themeToggleBtn(page: Page): Locator {
-  return page.getByLabel('Toggle theme')
-}
-
 // ---------------------------------------------------------------------------
 // Setup overlay
 // ---------------------------------------------------------------------------
@@ -54,13 +49,20 @@ test.describe('SetupOverlay', () => {
             if (cmd === 'get_settings')
               return Promise.resolve({
                 editor_font_size: 13,
-                prose_font_size: 13,
+                goal_state_font_size: 13,
+                prose_proof_font_size: 13,
                 assistant_font_size: 13,
-                model: null,
+                assistant_model: null,
+                translation_model: null,
+                assistant_prompt: null,
+                translation_prompt: null,
               })
             if (cmd === 'get_available_models') return Promise.resolve([])
             if (cmd === 'save_settings') return Promise.resolve(null)
-            if (cmd === 'set_model') return Promise.resolve(null)
+            if (cmd === 'get_default_assistant_prompt')
+              return Promise.resolve('mock assistant prompt')
+            if (cmd === 'get_default_translation_prompt')
+              return Promise.resolve('mock translation prompt')
             return Promise.resolve(null)
           },
         },
@@ -143,48 +145,6 @@ test.describe('Editor', () => {
     await typeMultiLine(page, LEAN_MULTI_STEP_PROOF)
     await expect(editor).toContainText('constructor')
     await expect(editor).toContainText('exact hp')
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Theme toggle
-// ---------------------------------------------------------------------------
-
-test.describe('Theme toggle', () => {
-  test('toggle button is visible', async ({ page, mountApp }) => {
-    await mountApp()
-    await expect(themeToggleBtn(page)).toBeVisible()
-  })
-
-  test('starts in dark theme', async ({ page, mountApp }) => {
-    await mountApp()
-    await expect(page.locator('html')).not.toHaveClass(/light/)
-  })
-
-  test('toggle switches to light theme', async ({ page, mountApp }) => {
-    await mountApp()
-    await themeToggleBtn(page).click()
-    await expect(page.locator('html')).toHaveClass(/light/)
-  })
-
-  test('toggle switches back to dark theme', async ({ page, mountApp }) => {
-    await mountApp()
-    const btn = themeToggleBtn(page)
-    await btn.click() // → light
-    await btn.click() // → dark
-    await expect(page.locator('html')).not.toHaveClass(/light/)
-  })
-
-  test('editor background changes with theme', async ({ page, mountApp }) => {
-    await mountApp()
-    const editor = page.locator('.cm-editor')
-
-    // Dark theme background (GitHub Dark canvas: #0d1117)
-    await expect(editor).toHaveCSS('background-color', 'rgb(13, 17, 23)')
-
-    // Switch to light
-    await themeToggleBtn(page).click()
-    await expect(editor).toHaveCSS('background-color', 'rgb(255, 255, 255)') // GitHub Light canvas: #ffffff
   })
 })
 
@@ -585,19 +545,24 @@ test.describe('Diagnostic underlines', () => {
     await expect(page.locator('.cm-diag-error')).toHaveCount(0)
   })
 
-  test('error underline has wavy red text-decoration in dark theme', async ({
-    page,
-    mountApp,
-    emitEvent,
-  }) => {
+  test('error underline has wavy red text-decoration', async ({ page, mountApp, emitEvent }) => {
     await setupErrorDiag(page, { mountApp, emitEvent })
 
     const underlined = page.locator('.cm-diag-error').first()
     await expect(underlined).toBeVisible()
     const decoration = await underlined.evaluate((el) => getComputedStyle(el).textDecoration)
     expect(decoration).toContain('wavy')
-    // GitHub Dark danger red #f85149 → rgb(248, 81, 73)
-    expect(decoration).toContain('rgb(248, 81, 73)')
+    // The error color is the --error CSS variable (theme-dependent red).
+    // Verify against the resolved value rather than a hardcoded constant.
+    const errorColor = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--error').trim(),
+    )
+    // Convert hex to rgb for comparison with computed style output.
+    const hex = errorColor.replace('#', '')
+    const r = parseInt(hex.substring(0, 2), 16)
+    const g = parseInt(hex.substring(2, 4), 16)
+    const b = parseInt(hex.substring(4, 6), 16)
+    expect(decoration).toContain(`rgb(${String(r)}, ${String(g)}, ${String(b)})`)
   })
 
   test('multiple diagnostics produce multiple underlined spans', async ({
