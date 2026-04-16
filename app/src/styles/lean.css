@@ -127,11 +127,6 @@
   }
 }
 
-/* Goal state — underline on the source line corresponding to selected goal */
-.cm-goal-line {
-  border-bottom: 2px solid var(--accent);
-}
-
 /* CodeMirror 6 full-screen editor */
 .cm-editor {
   height: 100%;

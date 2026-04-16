@@ -5,8 +5,6 @@ import type { SemanticToken } from './tauri'
 import {
   semanticTokensField,
   setSemanticTokensEffect,
-  activeLineField,
-  setActiveLineEffect,
   themeExtension,
   baseTheme,
 } from './codeWindowExtensions'
@@ -16,7 +14,7 @@ function makeView(doc: string): EditorView {
   return new EditorView({
     state: EditorState.create({
       doc,
-      extensions: [semanticTokensField, activeLineField, baseTheme, themeExtension('dark')],
+      extensions: [semanticTokensField, baseTheme, themeExtension('dark')],
     }),
     parent,
   })
@@ -60,41 +58,6 @@ describe('semanticTokensField', () => {
     })
     const decos = view.state.field(semanticTokensField)
     expect(decos.size).toBe(0)
-    view.destroy()
-  })
-})
-
-describe('activeLineField', () => {
-  it('adds a line decoration when setActiveLineEffect fires', () => {
-    const view = makeView('a\nb\nc')
-    view.dispatch({ effects: setActiveLineEffect.of([2]) })
-    const decos = view.state.field(activeLineField)
-    expect(decos.size).toBe(1)
-    view.destroy()
-  })
-
-  it('clears decorations when the effect fires with an empty list', () => {
-    const view = makeView('a\nb')
-    view.dispatch({ effects: setActiveLineEffect.of([1]) })
-    view.dispatch({ effects: setActiveLineEffect.of([]) })
-    const decos = view.state.field(activeLineField)
-    expect(decos.size).toBe(0)
-    view.destroy()
-  })
-
-  it('drops out-of-range lines', () => {
-    const view = makeView('only one line')
-    view.dispatch({ effects: setActiveLineEffect.of([5]) })
-    const decos = view.state.field(activeLineField)
-    expect(decos.size).toBe(0)
-    view.destroy()
-  })
-
-  it('deduplicates repeated line numbers', () => {
-    const view = makeView('a\nb\nc')
-    view.dispatch({ effects: setActiveLineEffect.of([2, 2, 2]) })
-    const decos = view.state.field(activeLineField)
-    expect(decos.size).toBe(1)
     view.destroy()
   })
 })
