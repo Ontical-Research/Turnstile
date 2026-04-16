@@ -1188,10 +1188,7 @@ mod tests {
         let data = vec![0, 0, 5, 1, 0b11]; // variable with declaration+readonly
         let tokens = decode_semantic_tokens(&data, &types, &modifiers);
         assert_eq!(tokens[0].token_type, "variable");
-        assert_eq!(
-            tokens[0].token_modifiers,
-            vec!["declaration", "readonly"]
-        );
+        assert_eq!(tokens[0].token_modifiers, vec!["declaration", "readonly"]);
     }
 
     #[test]

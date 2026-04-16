@@ -184,7 +184,12 @@ async fn start_lsp(app: AppHandle) -> Result<(), String> {
         .await
         .map_err(|e| format!("LSP initialize failed: {e}"))?;
 
-    handle_initialize_response(&app, &client.token_types, &client.token_modifiers, &init_result);
+    handle_initialize_response(
+        &app,
+        &client.token_types,
+        &client.token_modifiers,
+        &init_result,
+    );
 
     {
         let mut lock = state.lsp_client.lock().await;
@@ -836,9 +841,7 @@ fn handle_initialize_response(
 ) {
     let type_legend = lsp::parse_token_legend(result);
     let modifier_legend = lsp::parse_modifier_legend(result);
-    log::info!(
-        "LSP semantic token legend: types={type_legend:?}, modifiers={modifier_legend:?}"
-    );
+    log::info!("LSP semantic token legend: types={type_legend:?}, modifiers={modifier_legend:?}");
     if let Ok(mut types) = token_types.lock() {
         *types = type_legend;
     }
